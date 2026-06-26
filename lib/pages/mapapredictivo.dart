@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/pages/horariomayorincidencia.dart';
 import 'package:ubicasafe/pages/mapariesgo.dart';
 import 'package:ubicasafe/pages/menu.dart';
@@ -17,7 +18,7 @@ class MapaPredictivo extends StatefulWidget {
 
 class _MapaPredictivoState extends State<MapaPredictivo> {
   int _currentImageIndex = 0;
-  final PageController _pageController = PageController(viewportFraction: 0.8);
+  final PageController _pageController = PageController(viewportFraction: 0.85);
 
   final List<String> _imagePaths = [
     'assets/img/12octubre.jpg',
@@ -59,16 +60,13 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _startAutoScroll();
     _initializeLocalVideos();
   }
 
-  // ✅ CORREGIDO: Mejor inicialización de videos
   void _initializeLocalVideos() async {
     try {
-      print('🔄 Inicializando videos...');
-
-      // Inicializar cada video por separado para mejor control de errores
       await _initializeSingleVideo(0, 'assets/videos/prevencion.mp4');
       await _initializeSingleVideo(1, 'assets/videos/autoproteccion.mp4');
       await _initializeSingleVideo(2, 'assets/videos/primeros_auxilios.mp4');
@@ -81,11 +79,7 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
       setState(() {
         _videosInitialized = true;
       });
-
-      print('✅ Todos los videos inicializados correctamente');
     } catch (e) {
-      print('❌ Error inicializando videos: $e');
-      // Aún así marcamos como inicializado para mostrar las miniaturas de error
       setState(() {
         _videosInitialized = true;
       });
@@ -94,11 +88,7 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
 
   Future<void> _initializeSingleVideo(int index, String path) async {
     try {
-      print('🔄 Inicializando video $index: $path');
-
-      VideoPlayerController controller;
-      controller = VideoPlayerController.asset(path);
-
+      VideoPlayerController controller = VideoPlayerController.asset(path);
       await controller.initialize();
 
       if (!mounted || _isDisposed) {
@@ -114,15 +104,15 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
         allowMuting: true,
         showOptions: false,
         materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.red,
-          handleColor: Colors.red,
-          backgroundColor: Colors.grey,
-          bufferedColor: Colors.grey.shade400,
+          playedColor: AppColors.accentBlueLight,
+          handleColor: AppColors.accentBlue,
+          backgroundColor: AppColors.glassWhite,
+          bufferedColor: AppColors.glassBorder,
         ),
         placeholder: Container(
           color: Colors.black,
           child: const Center(
-            child: CircularProgressIndicator(color: Colors.red),
+            child: CircularProgressIndicator(color: AppColors.accentBlue),
           ),
         ),
         errorBuilder: (context, errorMessage) {
@@ -132,17 +122,9 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error, color: Colors.white, size: 50),
+                  const Icon(Icons.error_outline, color: AppColors.accentRed, size: 40),
                   const SizedBox(height: 10),
-                  Text(
-                    'Error cargando video',
-                    style: GoogleFonts.inter(color: Colors.white),
-                  ),
-                  Text(
-                    errorMessage,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text('Error de video', style: AppTextStyles.body),
                 ],
               ),
             ),
@@ -150,7 +132,6 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
         },
       );
 
-      // Asignar a los controladores correspondientes
       switch (index) {
         case 0:
           _videoController1 = controller;
@@ -165,22 +146,17 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
           _chewieController3 = chewieController;
           break;
       }
-
-      print('✅ Video $index inicializado correctamente');
-    } catch (e) {
-      print('❌ Error inicializando video $index ($path): $e');
-      // No re-lanzamos la excepción para permitir que otros videos se inicialicen
-    }
+    } catch (e) {}
   }
 
   void _startAutoScroll() {
-    Future.delayed(const Duration(seconds: 5), () {
+    Future.delayed(const Duration(seconds: 6), () {
       if (mounted && !_isDisposed) {
         final nextPage = (_currentImageIndex + 1) % _imagePaths.length;
         _pageController.animateToPage(
           nextPage,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutCubic,
         );
         _startAutoScroll();
       }
@@ -195,13 +171,6 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
     _videoController1?.dispose();
     _videoController2?.dispose();
     _videoController3?.dispose();
-
-    _chewieController1 = null;
-    _chewieController2 = null;
-    _chewieController3 = null;
-    _videoController1 = null;
-    _videoController2 = null;
-    _videoController3 = null;
   }
 
   @override
@@ -215,278 +184,274 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: Text('Mapa Predictivo', style: GoogleFonts.inter()),
-        backgroundColor: const Color.fromRGBO(66, 101, 253, 1.0),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: Text('Mapa Predictivo', style: AppTextStyles.headline3),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home_rounded, color: AppColors.textPrimary),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const MenuScreen()),
+              );
+            },
+          ),
+        ],
       ),
-      drawer: const MenuLateral(),
+      drawer: const _DarkDrawer(),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Sección de Mapa e Información Predictiva
-              GestureDetector(
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const MapaRiesgo()),
-                  );
-                },
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Banner a Mapa de Riesgo ──
+            GestureDetector(
+              onTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MapaRiesgo()),
+                );
+              },
+              child: Container(
+                height: 160,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  image: const DecorationImage(
+                    image: AssetImage('assets/img/mapariesgo.png'),
+                    fit: BoxFit.cover,
+                  ),
+                  boxShadow: AppShadows.card,
+                ),
                 child: Container(
-                  height: 200,
                   decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
-                    image: const DecorationImage(
-                      image: AssetImage('assets/img/mapariesgo.png'),
-                      fit: BoxFit.cover,
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.3),
+                      ],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
                     ),
                   ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: Colors.black.withOpacity(0.4),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Mapa De Riesgo',
-                        style: GoogleFonts.inter(
-                          fontSize: 18,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Zonas de mayor riesgo esta semana:',
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Carrusel de imágenes personalizado
-              SizedBox(
-                height: 180,
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: _imagePaths.length,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentImageIndex = index;
-                    });
-                  },
-                  itemBuilder: (context, index) {
-                    return AnimatedBuilder(
-                      animation: _pageController,
-                      builder: (context, child) {
-                        double value = 1.0;
-                        if (_pageController.position.haveDimensions) {
-                          value = _pageController.page! - index;
-                          value = (1 - (value.abs() * 0.3)).clamp(0.0, 1.0);
-                        }
-
-                        return Center(
-                          child: SizedBox(
-                            height: Curves.easeOut.transform(value) * 180,
-                            width:
-                                Curves.easeOut.transform(value) *
-                                MediaQuery.of(context).size.width *
-                                0.8,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8.0),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.5),
-                              spreadRadius: 1,
-                              blurRadius: 5,
-                              offset: const Offset(0, 3),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.map_rounded, color: Colors.white, size: 24),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Ver Mapa de Riesgo',
+                              style: AppTextStyles.headline3.copyWith(color: Colors.white),
                             ),
                           ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            _imagePaths[index],
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[300],
-                                child: const Icon(
-                                  Icons.image_not_supported,
-                                  size: 50,
-                                ),
-                              );
-                            },
-                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Explora las zonas con mayor incidencia',
+                          style: AppTextStyles.caption.copyWith(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Zonas de riesgo ──
+            Row(
+              children: [
+                const Icon(Icons.warning_rounded, color: AppColors.warningAmber, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'ZONAS DE RIESGO ESTA SEMANA',
+                  style: AppTextStyles.label.copyWith(
+                    color: AppColors.warningAmber,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Carrusel de imágenes
+            SizedBox(
+              height: 220,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: _imagePaths.length,
+                onPageChanged: (index) => setState(() => _currentImageIndex = index),
+                itemBuilder: (context, index) {
+                  return AnimatedBuilder(
+                    animation: _pageController,
+                    builder: (context, child) {
+                      double value = 1.0;
+                      if (_pageController.position.haveDimensions) {
+                        value = _pageController.page! - index;
+                        value = (1 - (value.abs() * 0.2)).clamp(0.0, 1.0);
+                      }
+
+                      return Center(
+                        child: SizedBox(
+                          height: Curves.easeOut.transform(value) * 220,
+                          width: Curves.easeOut.transform(value) * MediaQuery.of(context).size.width,
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: AppShadows.card,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset(
+                          _imagePaths[index],
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: AppColors.bgSurface,
+                              child: const Icon(Icons.image_not_supported, color: AppColors.textHint, size: 50),
+                            );
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Indicadores del carrusel
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_imagePaths.length, (index) {
-                  return Container(
-                    width: 8.0,
-                    height: 8.0,
-                    margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _currentImageIndex == index
-                          ? const Color.fromRGBO(66, 101, 253, 1.0)
-                          : Colors.grey,
                     ),
                   );
-                }),
+                },
               ),
-              const SizedBox(height: 24),
+            ),
+            const SizedBox(height: 16),
 
-              // Información de la imagen seleccionada
-              _buildImageInfo(),
-              const SizedBox(height: 24),
+            // Indicadores
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_imagePaths.length, (index) {
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: _currentImageIndex == index ? 24 : 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: _currentImageIndex == index ? AppColors.accentBlue : AppColors.glassBorder,
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 16),
 
-              // Sección de Videos informativos
-              Text(
-                'Videos de Prevención',
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+            // Info de la imagen actual
+            _buildImageInfo(),
+            const SizedBox(height: 32),
+
+            // ── Videos de Prevención ──
+            Row(
+              children: [
+                const Icon(Icons.play_circle_rounded, color: AppColors.accentBlueLight, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'VIDEOS DE PREVENCIÓN',
+                  style: AppTextStyles.label.copyWith(
+                    color: AppColors.accentBlueLight,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildVideoSection(
-                'Prevención de robos',
-                'Consejos para evitar ser víctima de robos en la calle',
-                0,
-              ),
-              const SizedBox(height: 12),
-              _buildVideoSection(
-                'Autoprotección',
-                'Técnicas básicas para protegerte en situaciones de riesgo',
-                1,
-              ),
-              const SizedBox(height: 12),
-              _buildVideoSection(
-                'Primeros auxilios',
-                'Qué hacer en caso de emergencias médicas',
-                2,
-              ),
-              const SizedBox(height: 24),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildVideoSection('Prevención de robos', 'Consejos para evitar ser víctima en la calle', 0),
+            const SizedBox(height: 12),
+            _buildVideoSection('Autoprotección', 'Técnicas básicas para protegerte', 1),
+            const SizedBox(height: 12),
+            _buildVideoSection('Primeros auxilios', 'Qué hacer en emergencias médicas', 2),
+            const SizedBox(height: 32),
 
-              // Sección de Números de Emergencia
-              Text(
-                'Números de Emergencia',
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+            // ── Números de Emergencia ──
+            Row(
+              children: [
+                const Icon(Icons.phone_in_talk_rounded, color: AppColors.safeGreen, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'NÚMEROS DE EMERGENCIA',
+                  style: AppTextStyles.label.copyWith(
+                    color: AppColors.safeGreen,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildEmergencyNumber(
-                'Policía Nacional',
-                '110',
-                Icons.local_police,
-                Colors.blue,
-              ),
-              _buildEmergencyNumber(
-                'Bomberos',
-                '119',
-                Icons.fire_truck,
-                Colors.red,
-              ),
-              _buildEmergencyNumber(
-                'Emergencias Médicas',
-                '165',
-                Icons.medical_services,
-                Colors.green,
-              ),
-              _buildEmergencyNumber(
-                'Línea de Seguridad',
-                '800-14-0060',
-                Icons.security,
-                Colors.orange,
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildEmergencyNumber('Policía Nacional', '110', Icons.local_police_rounded, const Color(0xFF2563EB)),
+            _buildEmergencyNumber('Bomberos', '119', Icons.local_fire_department_rounded, AppColors.accentRed),
+            _buildEmergencyNumber('Emergencias Médicas', '165', Icons.medical_services_rounded, AppColors.safeGreen),
+            _buildEmergencyNumber('Línea de Seguridad', '800-14-0060', Icons.security_rounded, AppColors.warningAmber),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const MenuScreen()),
-            (route) => false,
-          );
-        },
-        backgroundColor: const Color.fromRGBO(66, 101, 253, 1.0),
-        child: const Icon(Icons.home, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
   Widget _buildImageInfo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+    final color = _getRiskColor(_currentImageIndex);
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _imageTitles[_currentImageIndex],
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 28, 64, 96),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _imageDescriptions[_currentImageIndex],
-            style: GoogleFonts.inter(fontSize: 16),
-          ),
-          const SizedBox(height: 12),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: _getRiskColor(_currentImageIndex),
-                size: 16,
-              ),
-              const SizedBox(width: 4),
               Text(
-                _getRiskLevel(_currentImageIndex),
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  color: _getRiskColor(_currentImageIndex),
+                _imageTitles[_currentImageIndex],
+                style: AppTextStyles.headline3,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_rounded, color: color, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      _getRiskLevel(_currentImageIndex),
+                      style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _imageDescriptions[_currentImageIndex],
+            style: AppTextStyles.bodySmall,
           ),
         ],
       ),
@@ -496,110 +461,83 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
   String _getRiskLevel(int index) {
     switch (index) {
       case 0:
-        return 'Alto Riesgo';
-      case 1:
-        return 'Riesgo Moderado';
-      case 2:
-        return 'Bajo Riesgo';
       case 3:
-        return 'Alto Riesgo';
       case 4:
         return 'Alto Riesgo';
+      case 1:
       case 5:
-        return 'Riesgo Moderado';
+        return 'Moderado';
+      case 2:
+        return 'Bajo Riesgo';
       default:
-        return 'Riesgo Variable';
+        return 'Variable';
     }
   }
 
   Color _getRiskColor(int index) {
     switch (index) {
       case 0:
-        return Colors.red;
-      case 1:
-        return Colors.orange;
-      case 2:
-        return Colors.green;
       case 3:
-        return Colors.red;
       case 4:
-        return Colors.red;
+        return AppColors.dangerRed;
+      case 1:
       case 5:
-        return Colors.orange;
+        return AppColors.warningAmber;
+      case 2:
+        return AppColors.safeGreen;
       default:
-        return Colors.grey;
+        return AppColors.textHint;
     }
   }
 
   Widget _buildVideoSection(String title, String description, int videoIndex) {
     return GestureDetector(
-      onTap: () {
-        _showVideoDialog(context, videoIndex);
-      },
-      child: Container(
+      onTap: () => _showVideoDialog(context, videoIndex),
+      child: GlassCard(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Row(
           children: [
-            // Miniatura del video
+            // Thumbnail
             Container(
               width: 100,
               height: 70,
               decoration: BoxDecoration(
                 color: Colors.black,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.5),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.glassBorder),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 child: _buildVideoThumbnail(videoIndex),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
+                  Text(description, style: AppTextStyles.caption),
                 ],
               ),
             ),
-            const Icon(Icons.play_circle_fill, color: Colors.red, size: 30),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.play_arrow_rounded, color: AppColors.accentBlueLight),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ✅ CORREGIDO: Mejor manejo de miniaturas
   Widget _buildVideoThumbnail(int videoIndex) {
-    if (!_videosInitialized) {
-      return _buildLoadingThumbnail();
-    }
+    if (!_videosInitialized) return _buildLoadingThumbnail();
 
     VideoPlayerController? controller;
     switch (videoIndex) {
@@ -620,27 +558,18 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
       return _buildErrorThumbnail();
     }
 
-    // ✅ Usar FutureBuilder para mejor manejo del estado del video
     return FutureBuilder<bool>(
       future: _isVideoReady(controller),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingThumbnail();
-        }
-
-        if (snapshot.hasError || !snapshot.data!) {
-          return _buildErrorThumbnail();
-        }
+        if (snapshot.connectionState == ConnectionState.waiting) return _buildLoadingThumbnail();
+        if (snapshot.hasError || !snapshot.data!) return _buildErrorThumbnail();
 
         return Stack(
+          fit: StackFit.expand,
           children: [
             VideoPlayer(controller!),
-            Container(
-              color: Colors.black.withOpacity(0.3),
-              child: const Center(
-                child: Icon(Icons.play_arrow, color: Colors.white, size: 30),
-              ),
-            ),
+            Container(color: Colors.black.withOpacity(0.4)),
+            const Center(child: Icon(Icons.play_circle_outline_rounded, color: Colors.white, size: 32)),
           ],
         );
       },
@@ -655,18 +584,12 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
 
   Widget _buildLoadingThumbnail() {
     return Container(
-      color: Colors.grey[800],
+      color: AppColors.bgSurface,
       child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.videocam, color: Colors.white, size: 30),
-            SizedBox(height: 4),
-            Text(
-              'Cargando...',
-              style: TextStyle(color: Colors.white, fontSize: 10),
-            ),
-          ],
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textHint),
         ),
       ),
     );
@@ -674,87 +597,60 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
 
   Widget _buildErrorThumbnail() {
     return Container(
-      color: Colors.grey[800],
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error, color: Colors.white, size: 30),
-            SizedBox(height: 4),
-            Text(
-              'Error video',
-              style: TextStyle(color: Colors.white, fontSize: 10),
-            ),
-          ],
-        ),
-      ),
+      color: AppColors.bgSurface,
+      child: const Center(child: Icon(Icons.videocam_off_outlined, color: AppColors.textHint)),
     );
   }
 
-  // ✅ CORREGIDO: Mejor manejo del diálogo de video
   void _showVideoDialog(BuildContext context, int videoIndex) {
-    try {
-      if (!mounted || _isDisposed) {
+    if (!mounted || _isDisposed) return;
+
+    ChewieController? chewieController;
+    switch (videoIndex) {
+      case 0:
+        chewieController = _chewieController1;
+        break;
+      case 1:
+        chewieController = _chewieController2;
+        break;
+      case 2:
+        chewieController = _chewieController3;
+        break;
+      default:
         return;
-      }
+    }
 
-      ChewieController? chewieController;
-      switch (videoIndex) {
-        case 0:
-          chewieController = _chewieController1;
-          break;
-        case 1:
-          chewieController = _chewieController2;
-          break;
-        case 2:
-          chewieController = _chewieController3;
-          break;
-        default:
-          _showErrorDialog(context, 'Video no disponible');
-          return;
-      }
+    if (chewieController == null || !chewieController.videoPlayerController.value.isInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video no disponible')),
+      );
+      return;
+    }
 
-      if (chewieController == null ||
-          !chewieController.videoPlayerController.value.isInitialized) {
-        _showErrorDialog(
-          context,
-          'El video no está disponible o no se pudo cargar',
-        );
-        return;
-      }
+    _pauseAllVideos();
 
-      // Pausar cualquier video que esté reproduciéndose
-      _pauseAllVideos();
-
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (context) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(20),
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            height: MediaQuery.of(context).size.height * 0.6,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Chewie(controller: chewieController!),
-            ),
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          width: double.infinity,
+          height: 260,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Chewie(controller: chewieController!),
           ),
         ),
-      ).then((_) {
-        // Pausar el video cuando se cierra el diálogo
-        if (chewieController != null && !_isDisposed) {
-          chewieController.pause();
-        }
-      });
-    } catch (e) {
-      print('❌ Error inesperado al mostrar video: $e');
-      _showErrorDialog(context, 'Error al reproducir el video: $e');
-    }
+      ),
+    ).then((_) {
+      if (chewieController != null && !_isDisposed) chewieController.pause();
+    });
   }
 
   void _pauseAllVideos() {
@@ -763,205 +659,141 @@ class _MapaPredictivoState extends State<MapaPredictivo> {
     _chewieController3?.pause();
   }
 
-  void _showErrorDialog(BuildContext context, String message) {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyNumber(
-    String name,
-    String number,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _buildEmergencyNumber(String name, String number, IconData icon, Color color) {
     return GestureDetector(
       onTap: () => _launchCaller(context, number),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              spreadRadius: 1,
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                shape: BoxShape.circle,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 22),
               ),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    number,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(number, style: AppTextStyles.caption.copyWith(color: AppColors.textHint)),
+                  ],
+                ),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.2),
-                shape: BoxShape.circle,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.safeGreen.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.call_rounded, color: AppColors.safeGreen, size: 20),
               ),
-              child: const Icon(Icons.call, color: Colors.green),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ✅ VERSIÓN SIMPLIFICADA Y CONFIABLE (OPCIÓN 3)
   Future<void> _launchCaller(BuildContext context, String number) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Llamar a emergencias'),
-        content: Text('¿Quieres llamar al $number?'),
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Llamar', style: AppTextStyles.headline3.copyWith(fontSize: 18)),
+        content: Text('¿Deseas llamar al $number?', style: AppTextStyles.body),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar', style: TextStyle(color: AppColors.textSecondary)),
           ),
-          TextButton(
+          GradientButton(
+            text: 'Llamar',
+            height: 40,
+            icon: Icons.phone_in_talk,
             onPressed: () async {
-              Navigator.of(context).pop();
-              await _tryDirectCall(context, number);
+              Navigator.pop(context);
+              final Uri telUri = Uri(scheme: 'tel', path: number);
+              if (await canLaunchUrl(telUri)) {
+                await launchUrl(telUri, mode: LaunchMode.externalApplication);
+              }
             },
-            child: const Text('Llamar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Drawer lateral con estilo Dark ──
+class _DarkDrawer extends StatelessWidget {
+  const _DarkDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: AppColors.bgDark,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.only(top: 60, bottom: 20, left: 24, right: 24),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: AppGradients.headerBlue,
+              boxShadow: AppShadows.blueGlow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.explore_rounded, color: Colors.white, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text('Menú', style: AppTextStyles.headline2.copyWith(color: Colors.white)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                _buildDrawerItem(context, 'Mapa de Riesgo', Icons.map_rounded, const MapaRiesgo()),
+                _buildDrawerItem(context, 'Niveles de Riesgo', Icons.dangerous_rounded, const NivelesRiesgoScreen()),
+                _buildDrawerItem(context, 'Horarios Incidencia', Icons.access_time_filled_rounded, const HorarioMayorIncidenciaScreen()),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _tryDirectCall(BuildContext context, String number) async {
-    try {
-      final Uri telLaunchUri = Uri(scheme: 'tel', path: number);
-
-      if (await canLaunchUrl(telLaunchUri)) {
-        await launchUrl(telLaunchUri, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback: abrir el dialer con el número pre-marcado
-        final Uri dialUri = Uri(scheme: 'tel', path: number);
-
-        await launchUrl(dialUri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      // Último recurso: mostrar mensaje para marcar manualmente
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Marcar manualmente'),
-            content: Text('Por favor, marca manualmente: $number'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Widget targetPage) {
+    return ListTile(
+      leading: Icon(icon, color: AppColors.accentBlueLight),
+      title: Text(title, style: AppTextStyles.body),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textHint, size: 20),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      onTap: () {
+        Navigator.pop(context); // Cerrar drawer
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => targetPage),
         );
-      }
-    }
-  }
-}
-
-class MenuLateral extends StatelessWidget {
-  const MenuLateral({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: <Widget>[
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Color.fromRGBO(66, 101, 253, 1.0)),
-            child: Text(
-              'Menú',
-              style: TextStyle(color: Colors.white, fontSize: 24),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.map),
-            title: Text('Mapa de riesgo ', style: GoogleFonts.inter()),
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const MapaRiesgo()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.dangerous_sharp),
-            title: Text('Niveles de Riesgo', style: GoogleFonts.inter()),
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NivelesRiesgoScreen(),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info),
-            title: Text(
-              'Horarios de Mayor Incidencia',
-              style: GoogleFonts.inter(),
-            ),
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HorarioMayorIncidenciaScreen(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+      },
     );
   }
 }

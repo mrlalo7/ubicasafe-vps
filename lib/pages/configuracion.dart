@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/main.dart';
 
 class ConfiguracionScreen extends StatefulWidget {
@@ -375,23 +376,22 @@ Dispositivo: [Información del dispositivo]
   }
 
   Widget _buildSettingSection(String title, List<Widget> children) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: GoogleFonts.inter(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: const Color(0XFFFF4317),
+              style: AppTextStyles.label.copyWith(
+                color: AppColors.accentBlueLight,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             ...children,
           ],
         ),
@@ -405,15 +405,26 @@ Dispositivo: [Información del dispositivo]
     bool value,
     Function(bool) onChanged,
   ) {
-    return SwitchListTile(
-      title: Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.inter(color: Colors.grey[600]),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+          ),
+        ],
       ),
-      value: value,
-      onChanged: onChanged,
-      activeColor: const Color(0XFFFF4317),
     );
   }
 
@@ -424,18 +435,44 @@ Dispositivo: [Información del dispositivo]
     List<String> items,
     Function(String?) onChanged,
   ) {
-    return ListTile(
-      title: Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.inter(color: Colors.grey[600]),
-      ),
-      trailing: DropdownButton<String>(
-        value: value,
-        items: items.map((String item) {
-          return DropdownMenuItem<String>(value: item, child: Text(item));
-        }).toList(),
-        onChanged: onChanged,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: AppTextStyles.caption),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: value,
+            dropdownColor: AppColors.bgCard,
+            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary, fontSize: 14),
+            iconEnabledColor: AppColors.textSecondary,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              filled: true,
+              fillColor: AppColors.glassWhite,
+              isDense: true,
+            ),
+            items: items.map((item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item, style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textPrimary)),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            isExpanded: true,
+          ),
+        ],
       ),
     );
   }
@@ -446,35 +483,55 @@ Dispositivo: [Información del dispositivo]
     IconData icon,
     VoidCallback onTap,
   ) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0XFFFF4317)),
-      title: Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.inter(color: Colors.grey[600]),
-      ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+    return GestureDetector(
       onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: AppColors.accentBlueLight, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textHint, size: 20),
+          ],
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: Text(
-          'Configuración',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 20),
+          onPressed: () => Navigator.pop(context),
         ),
-        backgroundColor: const Color.fromRGBO(66, 101, 253, 1.0),
-        foregroundColor: Colors.white,
-        centerTitle: true,
+        title: Text('Configuración', style: AppTextStyles.headline3),
       ),
       body: ListView(
+        physics: const BouncingScrollPhysics(),
         children: [
+          const SizedBox(height: 8),
           // APARIENCIA
           _buildSettingSection('🎨 APARIENCIA', [
             _buildSwitchSetting(
@@ -567,16 +624,14 @@ Dispositivo: [Información del dispositivo]
             ),
           ]),
 
-          const SizedBox(height: 20),
-
-          // VERSIÓN
+          const SizedBox(height: 8),
           Center(
             child: Text(
               'UbicaSafe v1.0.0',
-              style: GoogleFonts.inter(color: Colors.grey, fontSize: 12),
+              style: AppTextStyles.caption,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 28),
         ],
       ),
     );

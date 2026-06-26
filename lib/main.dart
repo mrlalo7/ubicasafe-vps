@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ubicasafe/pages/portada.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 
-// Creamos un ValueNotifier para el tema global
-ValueNotifier<bool> temaOscuroNotifier = ValueNotifier<bool>(false);
+// Notifier global para el tema
+ValueNotifier<bool> temaOscuroNotifier = ValueNotifier<bool>(true);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Cargar el tema al iniciar la app
   final prefs = await SharedPreferences.getInstance();
-  temaOscuroNotifier.value = prefs.getBool('tema_oscuro') ?? false;
+  // Dark mode por defecto (true si no hay preferencia guardada)
+  temaOscuroNotifier.value = prefs.getBool('tema_oscuro') ?? true;
 
   runApp(const MyApp());
 }
@@ -26,15 +27,8 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'UbicaSafe',
-          theme: ThemeData.light().copyWith(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          ),
-          darkTheme: ThemeData.dark().copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.dark,
-            ),
-          ),
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
           themeMode: temaOscuro ? ThemeMode.dark : ThemeMode.light,
           home: const Portada(),
         );

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/pages/menu.dart';
 import '../services/simple_auth_service.dart';
 import 'dart:math';
@@ -11,42 +13,68 @@ class Logeo extends StatefulWidget {
   State<Logeo> createState() => _LogeoState();
 }
 
-class _LogeoState extends State<Logeo> {
+class _LogeoState extends State<Logeo> with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _captchaController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
 
   final SimpleAuthService _authService = SimpleAuthService();
   bool _isLoading = false;
+  bool _showPassword = false;
 
-  // Variables para el CAPTCHA visual
+  // CAPTCHA
   String _codigoGenerado = '';
+
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _checkIfLoggedIn();
     _generarNuevoCaptcha();
+
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOut,
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.15),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _captchaController.dispose();
+    super.dispose();
   }
 
   void _generarNuevoCaptcha() {
     final random = Random();
-    const caracteres =
-        'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sin O,0,1,I para evitar confusión
+    const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     _codigoGenerado = '';
-
-    // Generar código de 6 caracteres
     for (int i = 0; i < 6; i++) {
       _codigoGenerado += caracteres[random.nextInt(caracteres.length)];
     }
-
     setState(() {});
   }
 
-  // Widget personalizado para el CAPTCHA visual
   Widget _buildCaptchaDisplay() {
     return CustomPaint(
-      size: const Size(250, 80),
+      size: const Size(250, 70),
       painter: _CaptchaPainter(_codigoGenerado),
     );
   }
@@ -62,18 +90,14 @@ class _LogeoState extends State<Logeo> {
   }
 
   void _login() async {
-    // Validar campos vacíos
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _mostrarError('Por favor completa todos los campos');
       return;
     }
-
-    // Validar CAPTCHA
     if (_captchaController.text.isEmpty) {
       _mostrarError('Por favor ingresa el código CAPTCHA');
       return;
     }
-
     if (!_validarCaptcha()) {
       _mostrarError('Código CAPTCHA incorrecto. Intenta nuevamente.');
       _generarNuevoCaptcha();
@@ -102,7 +126,12 @@ class _LogeoState extends State<Logeo> {
   void _navigateToMain() {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const MenuScreen()),
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 500),
+        pageBuilder: (_, __, ___) => const MenuScreen(),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
       (route) => false,
     );
   }
@@ -110,9 +139,19 @@ class _LogeoState extends State<Logeo> {
   void _mostrarError(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.accentRed, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(mensaje, style: AppTextStyles.bodySmall.copyWith(color: Colors.white)),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.bgCard,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -120,199 +159,155 @@ class _LogeoState extends State<Logeo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: const Text('Iniciar Sesión'),
-        backgroundColor: const Color.fromARGB(255, 64, 96, 240),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Iniciar Sesión', style: AppTextStyles.headline3),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.security,
-                size: 80,
-                color: Color.fromARGB(255, 64, 96, 240),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'UbicaSafe',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Color.fromARGB(255, 64, 96, 240),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Inicia sesión en tu cuenta',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-
-              // Campo Email
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
-                ),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 15),
-
-              // Campo Contraseña
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(
-                  labelText: 'Contraseña',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 25),
-
-              // ✅ CAPTCHA VISUAL PERSONALIZADO
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // Título del CAPTCHA
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: SlideTransition(
+        position: _slideAnim,
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Icono y subtítulo ──
+                  Center(
+                    child: Column(
                       children: [
-                        const Text(
-                          'Verificación CAPTCHA',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [AppColors.accentBlue, AppColors.accentBlueDark],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: AppShadows.blueGlow,
                           ),
+                          child: const Icon(Icons.lock_open_outlined, color: Colors.white, size: 32),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 20),
-                          onPressed: _generarNuevoCaptcha,
-                          color: const Color.fromARGB(255, 64, 96, 240),
-                          tooltip: 'Generar nuevo código',
+                        const SizedBox(height: 14),
+                        Text('Ingresa tus credenciales', style: AppTextStyles.bodySmall),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── Campos de formulario ──
+                  GlassCard(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        DarkTextField(
+                          controller: _emailController,
+                          label: 'Correo electrónico',
+                          hint: 'tu@email.com',
+                          prefixIcon: Icons.email_outlined,
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 16),
+                        DarkTextField(
+                          controller: _passwordController,
+                          label: 'Contraseña',
+                          prefixIcon: Icons.lock_outline,
+                          obscureText: !_showPassword,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 15),
+                  ),
+                  const SizedBox(height: 16),
 
-                    // Display del CAPTCHA
-                    Container(
-                      height: 80,
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.grey[100]!,
-                            Colors.grey[200]!,
-                            Colors.grey[100]!,
+                  // ── CAPTCHA ──
+                  GlassCard(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Verificación CAPTCHA', style: AppTextStyles.label.copyWith(color: AppColors.textSecondary)),
+                            GestureDetector(
+                              onTap: _generarNuevoCaptcha,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.glassWhite,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.glassBorder),
+                                ),
+                                child: const Icon(Icons.refresh, color: AppColors.accentBlueLight, size: 18),
+                              ),
+                            ),
                           ],
                         ),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey[400]!),
-                      ),
-                      child: Center(child: _buildCaptchaDisplay()),
-                    ),
-                    const SizedBox(height: 15),
-
-                    // Campo para ingresar el CAPTCHA
-                    TextField(
-                      controller: _captchaController,
-                      decoration: InputDecoration(
-                        labelText: 'Ingresa el código de arriba',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.text_fields),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () => _captchaController.clear(),
-                        ),
-                        hintText: 'Escribe las letras/números en mayúsculas',
-                      ),
-                      textCapitalization: TextCapitalization.characters,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Texto de ayuda
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Caracteres: ${_codigoGenerado.length}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                        const SizedBox(height: 14),
+                        // Display del CAPTCHA
+                        Container(
+                          height: 80,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0A1025),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.glassBorder),
                           ),
+                          child: Center(child: _buildCaptchaDisplay()),
                         ),
-                        Text(
-                          'Distingue mayúsculas',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
+                        const SizedBox(height: 14),
+                        DarkTextField(
+                          controller: _captchaController,
+                          label: 'Ingresa el código de arriba',
+                          prefixIcon: Icons.text_fields,
+                          textCapitalization: TextCapitalization.characters,
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.body.copyWith(
+                            letterSpacing: 4,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () => _captchaController.clear(),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 25),
+                  ),
+                  const SizedBox(height: 24),
 
-              // Botón de Login
-              _isLoading
-                  ? const CircularProgressIndicator()
-                  : SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(
-                            255,
-                            64,
-                            96,
-                            240,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Iniciar Sesión',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 20),
-            ],
+                  // ── Botón de login ──
+                  GradientButton(
+                    text: 'Iniciar Sesión',
+                    icon: Icons.login_rounded,
+                    isLoading: _isLoading,
+                    onPressed: _isLoading ? null : _login,
+                    shadows: AppShadows.blueGlow,
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -320,7 +315,7 @@ class _LogeoState extends State<Logeo> {
   }
 }
 
-// Custom Painter para dibujar el CAPTCHA con distorsión
+// ── Custom Painter CAPTCHA con estilo dark ──
 class _CaptchaPainter extends CustomPainter {
   final String text;
   final Random random = Random();
@@ -329,80 +324,63 @@ class _CaptchaPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0XFFFF4317)
-      ..style = PaintingStyle.fill;
-
-    // Dibujar líneas de fondo para distracción
+    // Líneas de ruido
     for (int i = 0; i < 8; i++) {
       final linePaint = Paint()
-        ..color = Colors.grey.withOpacity(0.3)
+        ..color = AppColors.accentBlue.withOpacity(0.15)
         ..strokeWidth = 1;
-
-      final startX = random.nextDouble() * size.width;
-      final startY = random.nextDouble() * size.height;
-      final endX = random.nextDouble() * size.width;
-      final endY = random.nextDouble() * size.height;
-
-      canvas.drawLine(Offset(startX, startY), Offset(endX, endY), linePaint);
+      canvas.drawLine(
+        Offset(random.nextDouble() * size.width, random.nextDouble() * size.height),
+        Offset(random.nextDouble() * size.width, random.nextDouble() * size.height),
+        linePaint,
+      );
     }
 
-    // Dibujar puntos de fondo
-    for (int i = 0; i < 30; i++) {
+    // Puntos de ruido
+    for (int i = 0; i < 25; i++) {
       final dotPaint = Paint()
-        ..color = Colors.grey.withOpacity(0.2)
+        ..color = AppColors.accentBlueLight.withOpacity(0.12)
         ..style = PaintingStyle.fill;
-
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-
-      canvas.drawCircle(Offset(x, y), 1, dotPaint);
+      canvas.drawCircle(
+        Offset(random.nextDouble() * size.width, random.nextDouble() * size.height),
+        1.5,
+        dotPaint,
+      );
     }
 
-    // Dibujar cada carácter con distorsión
+    // Caracteres
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
-
     final charWidth = size.width / text.length;
 
     for (int i = 0; i < text.length; i++) {
-      final char = text[i];
-
-      // Configurar el estilo del texto con variaciones aleatorias
       final textStyle = TextStyle(
-        fontSize: 28 + random.nextDouble() * 8, // 28-36px
-        fontWeight: FontWeight.bold,
-        color: const Color.fromARGB(255, 64, 96, 240),
+        fontSize: 28 + random.nextDouble() * 6,
+        fontWeight: FontWeight.w800,
+        color: AppColors.accentBlueLight,
         fontFamily: 'Courier',
-        letterSpacing: 0,
+        shadows: [
+          Shadow(
+            color: AppColors.accentBlue.withOpacity(0.6),
+            blurRadius: 8,
+          ),
+        ],
       );
 
-      textPainter.text = TextSpan(text: char, style: textStyle);
+      textPainter.text = TextSpan(text: text[i], style: textStyle);
       textPainter.layout();
 
-      // Calcular posición base
       final baseX = i * charWidth + (charWidth - textPainter.width) / 2;
       final baseY = (size.height - textPainter.height) / 2;
 
-      // Aplicar transformaciones aleatorias
       canvas.save();
-
-      // Rotación aleatoria (-15° a +15°)
-      final rotation =
-          (random.nextDouble() - 0.5) * 0.5; // ±15 grados en radianes
-      final rotationOffset = Offset(
-        baseX + textPainter.width / 2,
-        baseY + textPainter.height / 2,
-      );
-      canvas.translate(rotationOffset.dx, rotationOffset.dy);
+      final rotation = (random.nextDouble() - 0.5) * 0.4;
+      final rotOffset = Offset(baseX + textPainter.width / 2, baseY + textPainter.height / 2);
+      canvas.translate(rotOffset.dx, rotOffset.dy);
       canvas.rotate(rotation);
-      canvas.translate(-rotationOffset.dx, -rotationOffset.dy);
+      canvas.translate(-rotOffset.dx, -rotOffset.dy);
 
-      // Desplazamiento vertical aleatorio
-      final offsetY = (random.nextDouble() - 0.5) * 10; // ±5 pixels
-
-      // Dibujar el carácter
+      final offsetY = (random.nextDouble() - 0.5) * 8;
       textPainter.paint(canvas, Offset(baseX, baseY + offsetY));
-
       canvas.restore();
     }
   }

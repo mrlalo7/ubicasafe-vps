@@ -1,540 +1,905 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ubicasafe/core/app_theme.dart';
+import 'package:ubicasafe/data/risk_zones.dart';
 import 'package:ubicasafe/pages/calificanos.dart';
+import 'package:ubicasafe/pages/chat_ia.dart';
 import 'package:ubicasafe/pages/configuracion.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
+import 'package:ubicasafe/pages/mapariesgo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
 import 'package:ubicasafe/pages/ubicaciontiemporeal.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-class MenuScreen extends StatelessWidget {
+class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
 
-  // Método para construir los botones del menú con degradado azul
-  Widget _buildMenuButton(String title, IconData icon, VoidCallback onPressed) {
-    return Card(
-      margin: const EdgeInsets.all(12),
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color.fromARGB(255, 100, 130, 255), // Azul claro
-              Color.fromARGB(255, 57, 91, 251), // Azul medio
-              Color.fromARGB(255, 40, 70, 220), // Azul oscuro
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color.fromARGB(255, 57, 91, 251).withOpacity(0.4),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 2,
-                  ),
-                ),
-                child: Icon(icon, size: 32, color: Colors.white),
-              ),
-              const SizedBox(height: 15),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  @override
+  State<MenuScreen> createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  LatLng _currentPosition = RiskMapData.defaultCenter;
+  bool _usingDeviceLocation = false;
+  GoogleMapController? _mapController;
+
+  static const _mapStyle = '''
+  [
+    {"elementType":"geometry","stylers":[{"color":"#1f2a3a"}]},
+    {"elementType":"labels.text.fill","stylers":[{"color":"#9ca5b3"}]},
+    {"elementType":"labels.text.stroke","stylers":[{"color":"#1f2a3a"}]},
+    {"featureType":"road","elementType":"geometry","stylers":[{"color":"#38414e"}]},
+    {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#212a37"}]},
+    {"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]},
+    {"featureType":"poi","stylers":[{"visibility":"off"}]}
+  ]
+  ''';
+
+  RiskZone get _activeZone => RiskMapData.effectiveZoneFor(_currentPosition);
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final latLng = LatLng(position.latitude, position.longitude);
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = latLng;
+        _usingDeviceLocation = true;
+      });
+      _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
+    } catch (_) {
+      // El home sigue funcionando con el centro real de referencia de El Alto.
+    }
+  }
+
+  void _open(Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
   @override
   Widget build(BuildContext context) {
+    final zone = _activeZone;
+
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color.fromARGB(255, 240, 245, 255),
-              Color.fromARGB(255, 225, 235, 255),
-              Color.fromARGB(255, 210, 225, 255),
-            ],
-          ),
-        ),
-        child: Column(
-          children: [
-            // AppBar personalizado
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(
-                top: 60,
-                bottom: 20,
-                left: 20,
-                right: 20,
-              ),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color.fromARGB(255, 70, 110, 255),
-                    Color.fromARGB(255, 57, 91, 251),
-                  ],
-                ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.blue[900]!.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+        decoration: const BoxDecoration(gradient: AppGradients.darkBackground),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 126),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
-                            width: 2,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.security,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                      _Header(onNotifications: _showAlerts),
+                      const SizedBox(height: 28),
+                      _Greeting(zone: zone),
+                      const SizedBox(height: 18),
+                      _SecurityStatus(
+                        zone: zone,
+                        usingDeviceLocation: _usingDeviceLocation,
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'UbicaSafe',
-                        style: GoogleFonts.inter(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 1.2,
-                        ),
+                      const SizedBox(height: 16),
+                      _MapPreview(
+                        currentPosition: _currentPosition,
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                        },
+                        mapStyle: _mapStyle,
+                        onOpen: () => _open(const MapaRiesgo()),
                       ),
+                      const SizedBox(height: 18),
+                      _FeatureCards(
+                        onLocation: () => _open(const UbicacionTiempoReal()),
+                        onMap: () => _open(const MapaPredictivo()),
+                        onReport: () => _open(const ReportarRobo()),
+                      ),
+                      const SizedBox(height: 18),
+                      _Recommendation(zone: zone),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tu seguridad es nuestra prioridad',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Grid de opciones
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  children: [
-                    _buildMenuButton(
-                      ' Mi Ubicación\nen Tiempo Real',
-                      Icons.location_on,
-                      () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const UbicacionTiempoReal(),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildMenuButton(' Mapa\nPredictivo', Icons.map, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MapaPredictivo(),
-                        ),
-                      );
-                    }),
-                    _buildMenuButton(' Reportar\nRobo', Icons.report, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ReportarRobo(),
-                        ),
-                      );
-                    }),
-                    _buildMenuButton(' Mi\nPerfil', Icons.person, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MiPerfilScreen(),
-                        ),
-                      );
-                    }),
-                    _buildMenuButton(' Configuración', Icons.settings, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ConfiguracionScreen(),
-                        ),
-                      );
-                    }),
-                    _buildMenuButton(' CALIFÍCANOS', Icons.star, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const CalificanosScreen(),
-                        ),
-                      );
-                    }),
-                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-
-      // Botón de emergencia flotante
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        child: FloatingActionButton(
-          onPressed: () {
-            _mostrarEmergenciaRapida(context);
-          },
-          backgroundColor: const Color.fromARGB(255, 255, 59, 48),
-          elevation: 12,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(50),
-            side: const BorderSide(color: Colors.white, width: 3),
-          ),
-          child: const Icon(
-            Icons.dangerous_outlined,
-            color: Colors.white,
-            size: 32,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _BottomNav(
+                  onHome: () {},
+                  onProfile: () => _open(const MiPerfilScreen()),
+                  onAi: () => _open(const ChatIaScreen()),
+                  onSettings: () => _open(const ConfiguracionScreen()),
+                  onRate: () => _open(const CalificanosScreen()),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // Método para mostrar diálogo de calificación
-  void _mostrarDialogoCalificacion(BuildContext context) {
-    showDialog(
+  void _showAlerts() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color.fromARGB(255, 100, 130, 255),
-                    Color.fromARGB(255, 57, 91, 251),
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AlertsSheet(zone: _activeZone),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.onNotifications});
+
+  final VoidCallback onNotifications;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Image.asset(
+          'assets/icons/ubicasafe_shield.png',
+          width: 62,
+          height: 62,
+          fit: BoxFit.contain,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(text: 'Ubica', style: AppTextStyles.headline1),
+                    TextSpan(
+                      text: 'Safe',
+                      style: AppTextStyles.headline1.copyWith(
+                        color: AppColors.warningAmber,
+                      ),
+                    ),
                   ],
                 ),
-                shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.star, color: Colors.white, size: 40),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.location_on,
+                    color: AppColors.textSecondary,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 4),
+                  Text('El Alto, Bolivia', style: AppTextStyles.bodySmall),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              onPressed: onNotifications,
+              icon: const Icon(Icons.notifications_none_rounded, size: 34),
             ),
-            const SizedBox(height: 10),
-            Text(
-              '⭐ ¡CALIFÍCANOS! ⭐',
-              style: GoogleFonts.inter(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: const Color.fromARGB(255, 57, 91, 251),
+            Positioned(
+              right: 5,
+              top: 4,
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppColors.accentRed,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '3',
+                  style: AppTextStyles.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '¿Cómo calificarías tu experiencia con UbicaSafe?',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+      ],
+    );
+  }
+}
+
+class _Greeting extends StatelessWidget {
+  const _Greeting({required this.zone});
+
+  final RiskZone zone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('¡Hola, Juan!', style: AppTextStyles.headline1),
+              const SizedBox(height: 6),
+              Text(
+                'Tu seguridad es nuestra prioridad.',
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [1, 2, 3, 4, 5].map((star) {
-                return IconButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _mostrarGraciasCalificacion(context, star);
-                  },
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color.fromARGB(
-                        255,
-                        57,
-                        91,
-                        251,
-                      ).withOpacity(0.1),
-                    ),
-                    child: Icon(
-                      Icons.star,
-                      color: const Color.fromARGB(255, 57, 91, 251),
-                      size: 35,
+            ],
+          ),
+        ),
+        GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          borderRadius: BorderRadius.circular(16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wb_cloudy_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '8°C',
+                    style: AppTextStyles.body.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                );
-              }).toList(),
+                  Text('El Alto', style: AppTextStyles.caption),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SecurityStatus extends StatelessWidget {
+  const _SecurityStatus({
+    required this.zone,
+    required this.usingDeviceLocation,
+  });
+
+  final RiskZone zone;
+  final bool usingDeviceLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = switch (zone.level) {
+      RiskLevel.high => 'Alerta',
+      RiskLevel.medium => 'Precaución',
+      RiskLevel.low => 'Zona tranquila',
+    };
+
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      borderRadius: BorderRadius.circular(22),
+      child: Row(
+        children: [
+          _ShieldStatus(color: zone.color),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Estado de seguridad actual',
+                  style: AppTextStyles.bodySmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: AppTextStyles.headline2.copyWith(color: zone.color),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Riesgo ${zone.label.toLowerCase()} en ${zone.name}',
+                  style: AppTextStyles.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      usingDeviceLocation
+                          ? Icons.my_location_rounded
+                          : Icons.place_rounded,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        usingDeviceLocation
+                            ? 'Calculado con tu ubicación real'
+                            : 'Referencia del mapa de El Alto',
+                        style: AppTextStyles.caption,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Toca una estrella',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                color: Colors.grey,
-                fontStyle: FontStyle.italic,
+          ),
+          _RiskGauge(score: zone.score, color: zone.color, label: zone.label),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapPreview extends StatelessWidget {
+  const _MapPreview({
+    required this.currentPosition,
+    required this.onMapCreated,
+    required this.mapStyle,
+    required this.onOpen,
+  });
+
+  final LatLng currentPosition;
+  final ValueChanged<GoogleMapController> onMapCreated;
+  final String mapStyle;
+  final VoidCallback onOpen;
+
+  Set<Circle> get _circles {
+    return RiskMapData.zones.map((zone) {
+      return Circle(
+        circleId: CircleId(zone.name),
+        center: zone.position,
+        radius: zone.radiusMeters,
+        fillColor: zone.color.withValues(alpha: 0.24),
+        strokeColor: zone.color.withValues(alpha: 0.82),
+        strokeWidth: 2,
+      );
+    }).toSet();
+  }
+
+  Set<Marker> get _markers {
+    return {
+      Marker(
+        markerId: const MarkerId('current_position'),
+        position: currentPosition,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(title: 'Ubicación de referencia'),
+      ),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        height: 255,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GoogleMap(
+                onMapCreated: onMapCreated,
+                style: mapStyle,
+                initialCameraPosition: CameraPosition(
+                  target: currentPosition,
+                  zoom: 12.8,
+                ),
+                circles: _circles,
+                markers: _markers,
+                polygons: {
+                  Polygon(
+                    polygonId: const PolygonId('el_alto_bounds'),
+                    points: RiskMapData.elAltoBounds,
+                    fillColor: AppColors.accentBlue.withValues(alpha: 0.06),
+                    strokeColor: AppColors.accentBlue.withValues(alpha: 0.45),
+                    strokeWidth: 2,
+                  ),
+                },
+                liteModeEnabled: true,
+                compassEnabled: false,
+                mapToolbarEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                rotateGesturesEnabled: false,
+                tiltGesturesEnabled: false,
+                scrollGesturesEnabled: false,
+                zoomGesturesEnabled: false,
+                onTap: (_) => onOpen(),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: Row(
+                children: [
+                  const Expanded(child: _Legend()),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    onPressed: onOpen,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                    label: const Text('Ver mapa'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 46),
+                      backgroundColor: AppColors.bgSurface.withValues(
+                        alpha: 0.92,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Quizás después',
-              style: GoogleFonts.inter(
-                color: Colors.grey,
-                fontWeight: FontWeight.w600,
-              ),
+      ),
+    );
+  }
+}
+
+class _FeatureCards extends StatelessWidget {
+  const _FeatureCards({
+    required this.onLocation,
+    required this.onMap,
+    required this.onReport,
+  });
+
+  final VoidCallback onLocation;
+  final VoidCallback onMap;
+  final VoidCallback onReport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _FeatureCard(
+            icon: Icons.location_on_rounded,
+            title: 'Mi ubicación',
+            subtitle: 'en tiempo real',
+            color: AppColors.accentBlue,
+            onTap: onLocation,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _FeatureCard(
+            icon: Icons.map_rounded,
+            title: 'Mapa',
+            subtitle: 'predictivo',
+            color: AppColors.accentBlueLight,
+            onTap: onMap,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _FeatureCard(
+            icon: Icons.report_rounded,
+            title: 'Reportar',
+            subtitle: 'robo',
+            color: const Color(0xFFFF8A00),
+            onTap: onReport,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Recommendation extends StatelessWidget {
+  const _Recommendation({required this.zone});
+
+  final RiskZone zone;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      borderRadius: BorderRadius.circular(22),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: zone.color, size: 46),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Recomendación del día',
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  zone.level == RiskLevel.high
+                      ? 'Estás cerca de una zona de alto riesgo. Evita calles con poca iluminación y comparte tu ubicación.'
+                      : zone.description,
+                  style: AppTextStyles.body.copyWith(height: 1.32),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // Método para mostrar agradecimiento después de calificar
-  void _mostrarGraciasCalificacion(BuildContext context, int estrellas) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 57, 91, 251).withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.emoji_emotions,
-                color: const Color.fromARGB(255, 57, 91, 251),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '¡Gracias por tus $estrellas estrellas! 💫',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color.fromARGB(255, 57, 91, 251),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({
+    required this.onHome,
+    required this.onProfile,
+    required this.onAi,
+    required this.onSettings,
+    required this.onRate,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onProfile;
+  final VoidCallback onAi;
+  final VoidCallback onSettings;
+  final VoidCallback onRate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 110,
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface.withValues(alpha: 0.96),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: const Border(top: BorderSide(color: AppColors.glassBorder)),
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          _NavItem(
+            icon: Icons.shield_rounded,
+            label: 'Inicio',
+            active: true,
+            onTap: onHome,
+          ),
+          _NavItem(
+            icon: Icons.person_rounded,
+            label: 'Mi perfil',
+            onTap: onProfile,
+          ),
+          _AiButton(onTap: onAi),
+          _NavItem(
+            icon: Icons.settings_rounded,
+            label: 'Configuración',
+            onTap: onSettings,
+          ),
+          _NavItem(
+            icon: Icons.star_rounded,
+            label: 'Califícanos',
+            onTap: onRate,
+          ),
+        ],
       ),
     );
   }
+}
 
-  // Método para el botón de emergencia
-  void _mostrarEmergenciaRapida(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                Color.fromARGB(255, 100, 130, 255),
-                Color.fromARGB(255, 57, 91, 251),
-              ],
+class _ShieldStatus extends StatelessWidget {
+  const _ShieldStatus({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      height: 88,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CircularProgressIndicator(
+            value: 0.76,
+            strokeWidth: 5,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            backgroundColor: color.withValues(alpha: 0.16),
+          ),
+          Icon(Icons.shield_rounded, color: color, size: 56),
+          const Icon(Icons.check_rounded, color: AppColors.bgDark, size: 30),
+        ],
+      ),
+    );
+  }
+}
+
+class _RiskGauge extends StatelessWidget {
+  const _RiskGauge({
+    required this.score,
+    required this.color,
+    required this.label,
+  });
+
+  final double score;
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 92,
+      child: Column(
+        children: [
+          SizedBox(
+            width: 88,
+            height: 62,
+            child: CustomPaint(painter: _GaugePainter(score: score)),
+          ),
+          Text('Nivel de riesgo', style: AppTextStyles.caption),
+          Text(
+            label.toUpperCase(),
+            style: AppTextStyles.body.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
             ),
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  const _GaugePainter({required this.score});
+
+  final double score;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(5, 10, size.width - 10, size.height * 1.35);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 11
+      ..strokeCap = StrokeCap.round;
+    final colors = [
+      AppColors.safeGreen,
+      AppColors.warningAmber,
+      const Color(0xFFFF8A00),
+      AppColors.dangerRed,
+    ];
+
+    for (var i = 0; i < colors.length; i++) {
+      paint.color = colors[i];
+      canvas.drawArc(
+        rect,
+        math.pi + i * math.pi / 4,
+        math.pi / 4,
+        false,
+        paint,
+      );
+    }
+
+    final center = Offset(size.width / 2, rect.center.dy + 18);
+    final angle = math.pi + (math.pi * score.clamp(0, 1));
+    final end = Offset(
+      center.dx + math.cos(angle) * 42,
+      center.dy + math.sin(angle) * 42,
+    );
+    canvas.drawLine(
+      center,
+      end,
+      Paint()
+        ..color = Colors.white
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(center, 5, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) {
+    return oldDelegate.score != score;
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  const _FeatureCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          height: 134,
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 46),
+              const SizedBox(height: 12),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  title,
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.bgDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  subtitle,
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.bgDark,
+                    fontSize: 14,
+                    height: 1,
+                  ),
+                ),
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.emergency,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '🚨 EMERGENCIA',
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '¿Qué tipo de emergencia estás reportando?',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Column(
-                  children: [
-                    _buildEmergencyButton(
-                      'Policía (110)',
-                      Icons.local_police,
-                      () {
-                        Navigator.pop(context);
-                        _llamarEmergencia('110');
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    _buildEmergencyButton(
-                      'Bomberos (119)',
-                      Icons.fire_truck,
-                      () {
-                        Navigator.pop(context);
-                        _llamarEmergencia('119');
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    _buildEmergencyButton('Reportar Robo', Icons.report, () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ReportarRobo(),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(
-                        'Cancelar',
-                        style: GoogleFonts.inter(
-                          color: Colors.white.withOpacity(0.8),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildEmergencyButton(
-    String text,
-    IconData icon,
-    VoidCallback onPressed,
-  ) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: const Color.fromARGB(255, 57, 91, 251),
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          elevation: 4,
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(14),
+        border: const Border.fromBorderSide(
+          BorderSide(color: AppColors.glassBorder),
         ),
-        child: Row(
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _LegendItem(color: AppColors.safeGreen, label: 'Bajo'),
+          _LegendItem(color: AppColors.warningAmber, label: 'Medio'),
+          _LegendItem(color: Color(0xFFFF8A00), label: 'Alto'),
+          _LegendItem(color: AppColors.dangerRed, label: 'Crítico'),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: AppTextStyles.caption.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              text,
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+            Icon(
+              icon,
+              color: active
+                  ? AppColors.accentBlueLight
+                  : AppColors.textSecondary,
+              size: 28,
+            ),
+            const SizedBox(height: 5),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: AppTextStyles.caption.copyWith(
+                  color: active
+                      ? AppColors.accentBlueLight
+                      : AppColors.textSecondary,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -542,27 +907,140 @@ class MenuScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  // Método para simular llamada de emergencia
-  void _llamarEmergencia(String numero) {
-    ScaffoldMessenger.of(
-      GlobalKey<NavigatorState>().currentContext!,
-    ).showSnackBar(
-      SnackBar(
-        content: Row(
+class _AiButton extends StatelessWidget {
+  const _AiButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(38),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.phone, color: Colors.white),
-            const SizedBox(width: 10),
-            Text(
-              'Llamando a $numero...',
-              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF785BFF), AppColors.accentBlue],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accentBlue.withValues(alpha: 0.55),
+                    blurRadius: 24,
+                    spreadRadius: 3,
+                  ),
+                ],
+              ),
+              child: Container(
+                margin: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                ),
+                child: const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  color: Colors.white,
+                  size: 29,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Hablar con IA',
+                style: AppTextStyles.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ],
         ),
-        backgroundColor: const Color.fromARGB(255, 57, 91, 251),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
+}
+
+class _AlertsSheet extends StatelessWidget {
+  const _AlertsSheet({required this.zone});
+
+  final RiskZone zone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: const BoxDecoration(
+        color: AppColors.bgSurface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        border: Border(top: BorderSide(color: AppColors.glassBorder)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Alertas recientes', style: AppTextStyles.headline2),
+          const SizedBox(height: 14),
+          _AlertRow(
+            icon: Icons.radar_rounded,
+            color: zone.color,
+            text: '${zone.name}: riesgo ${zone.label.toLowerCase()} detectado.',
+          ),
+          const _AlertRow(
+            icon: Icons.lightbulb_rounded,
+            color: AppColors.warningAmber,
+            text: 'Evita rutas poco iluminadas durante la noche.',
+          ),
+          const _AlertRow(
+            icon: Icons.my_location_rounded,
+            color: AppColors.accentBlueLight,
+            text: 'Activa tu ubicación en tiempo real al desplazarte.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlertRow extends StatelessWidget {
+  const _AlertRow({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: AppTextStyles.body)),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> callEmergencyNumber(BuildContext context, String number) async {
+  final launched = await launchUrl(Uri(scheme: 'tel', path: number));
+  if (!context.mounted || launched) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('No se pudo iniciar la llamada al $number')),
+  );
 }

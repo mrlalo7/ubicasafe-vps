@@ -1,42 +1,55 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
 
-class HorarioMayorIncidenciaScreen extends StatelessWidget {
+class HorarioMayorIncidenciaScreen extends StatefulWidget {
   const HorarioMayorIncidenciaScreen({super.key});
+
+  @override
+  State<HorarioMayorIncidenciaScreen> createState() => _HorarioMayorIncidenciaScreenState();
+}
+
+class _HorarioMayorIncidenciaScreenState extends State<HorarioMayorIncidenciaScreen> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: Text('Horarios de Mayor Incidencia', style: GoogleFonts.inter()),
-        backgroundColor: const Color(0XFFFF4317),
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 20),
           onPressed: () {
             Navigator.pushAndRemoveUntil(
               context,
-              MaterialPageRoute(builder: (context) => MapaPredictivo()),
-              (route) => false, // ← Esto elimina TODAS las pantallas anteriores
+              MaterialPageRoute(builder: (context) => const MapaPredictivo()),
+              (route) => false,
             );
           },
         ),
+        title: Text('Horarios de Incidencia', style: AppTextStyles.headline3),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildInfoBox(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
             _buildHorarioItem(
               horario: '18:00 - 22:00',
               nivel: 'ALTA INCIDENCIA',
-              color: Colors.red,
-              descripcion:
-                  'Hora pico de robos nocturnos. Oscuridad + gente returning del trabajo',
+              color: AppColors.dangerRed,
+              icon: Icons.nightlight_round,
+              descripcion: 'Hora pico de robos nocturnos. Oscuridad + retorno del trabajo.',
               motivos: [
                 'Poca visibilidad por oscuridad',
                 'Personas cansadas del trabajo',
@@ -54,11 +67,11 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
             _buildHorarioItem(
               horario: '12:00 - 14:00',
               nivel: 'MEDIA-ALTA INCIDENCIA',
-              color: Colors.orange,
-              descripcion:
-                  'Hora de almuerzo. Gente distraída y aglomeraciones en mercados',
+              color: AppColors.warningAmber,
+              icon: Icons.wb_sunny_rounded,
+              descripcion: 'Hora de almuerzo. Gente distraída y aglomeraciones comerciales.',
               motivos: [
-                'Aglomeraciones en comedores y mercados',
+                'Aglomeraciones en comedores',
                 'Personas distraídas comiendo',
                 'Mucho movimiento comercial',
                 'Billeteras visibles al pagar',
@@ -74,17 +87,17 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
             _buildHorarioItem(
               horario: '07:00 - 09:00',
               nivel: 'MEDIA INCIDENCIA',
-              color: const Color.fromARGB(255, 190, 174, 25),
-              descripcion:
-                  'Hora pico de transporte. Robos por distracción en micros',
+              color: AppColors.accentBlueLight,
+              icon: Icons.wb_twilight_rounded,
+              descripcion: 'Hora pico de transporte. Robos por distracción en micros.',
               motivos: [
-                'Micros y transporte público llenísimos',
-                'Gente apurada yendo al trabajo',
+                'Transporte público saturado',
+                'Gente apurada al trabajo',
                 'Carteristas en aglomeraciones',
                 'Distracción por celulares',
               ],
               zonasCriticas: [
-                'Paradas de micro',
+                'Paradas de transporte',
                 'Terminal de buses',
                 'Entradas a universidades',
                 'Zonas industriales',
@@ -94,13 +107,13 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
             _buildHorarioItem(
               horario: '22:00 - 06:00',
               nivel: 'BAJA INCIDENCIA',
-              color: Colors.green,
-              descripcion:
-                  'Menor actividad delictiva. Pero mayor riesgo por poca gente',
+              color: AppColors.safeGreen,
+              icon: Icons.bedtime_rounded,
+              descripcion: 'Menor actividad delictiva. Mayor riesgo por zonas desoladas.',
               motivos: [
                 'Poca gente en las calles',
-                'Mayor vigilancia policial nocturna',
-                'Menos oportunidades para delincuentes',
+                'Mayor vigilancia nocturna',
+                'Menos oportunidades de robo',
                 'Comercios cerrados',
               ],
               zonasCriticas: [
@@ -110,7 +123,7 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
                 'Vías rápidas',
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
             _buildDiasSemana(),
           ],
         ),
@@ -120,27 +133,31 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
 
   Widget _buildInfoBox() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue),
+        color: AppColors.accentBlue.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.accentBlue.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '📊 Patrones de Incidencia por Horario - El Alto',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: Colors.blue[800],
-            ),
+          Row(
+            children: [
+              const Icon(Icons.insert_chart_outlined_rounded, color: AppColors.accentBlueLight, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Patrones por Horario',
+                  style: AppTextStyles.headline3.copyWith(color: AppColors.accentBlueLight),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            'Datos basados en análisis de reportes policiales y patrones delictivos de los últimos 6 meses.',
-            style: GoogleFonts.inter(fontSize: 14),
+            'Datos basados en análisis de reportes policiales y patrones delictivos de los últimos 6 meses en El Alto.',
+            style: AppTextStyles.body.copyWith(height: 1.5),
           ),
         ],
       ),
@@ -151,179 +168,175 @@ class HorarioMayorIncidenciaScreen extends StatelessWidget {
     required String horario,
     required String nivel,
     required Color color,
+    required IconData icon,
     required String descripcion,
     required List<String> motivos,
     required List<String> zonasCriticas,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
-      ),
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header con horario y nivel
           Row(
             children: [
-              Icon(Icons.access_time, color: color, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                horario,
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: color,
-                ),
-              ),
-              const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(4),
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
                 ),
-                child: Text(
-                  nivel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(horario, style: AppTextStyles.headline3),
+                    const SizedBox(height: 4),
+                    Text(
+                      nivel,
+                      style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          Text(descripcion, style: AppTextStyles.body),
+          const SizedBox(height: 16),
 
-          // Descripción
-          Text(descripcion, style: GoogleFonts.inter(fontSize: 14)),
-          const SizedBox(height: 12),
-
-          // Motivos
-          Text(
-            '🔍 Motivos principales:',
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-          const SizedBox(height: 4),
-          ...motivos
-              .map(
-                (motivo) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    '• $motivo',
-                    style: GoogleFonts.inter(fontSize: 13),
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Motivos', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    ...motivos.map((m) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Container(
+                                  width: 4, height: 4,
+                                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(m, style: AppTextStyles.caption)),
+                            ],
+                          ),
+                        )),
+                  ],
                 ),
-              )
-              .toList(),
-          const SizedBox(height: 12),
-
-          // Zonas críticas
-          Text(
-            '📍 Zonas críticas:',
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-          const SizedBox(height: 4),
-          ...zonasCriticas
-              .map(
-                (zona) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    '• $zona',
-                    style: GoogleFonts.inter(fontSize: 13),
-                  ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Zonas Críticas', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    ...zonasCriticas.map((z) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Container(
+                                  width: 4, height: 4,
+                                  decoration: const BoxDecoration(color: AppColors.textHint, shape: BoxShape.circle),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(z, style: AppTextStyles.caption)),
+                            ],
+                          ),
+                        )),
+                  ],
                 ),
-              )
-              .toList(),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildDiasSemana() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '📅 Días de la Semana con Mayor Incidencia',
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-          _buildDiaItem('Viernes y Sábado', 'ALTA', Colors.red, [
-            'Mayor movimiento nocturno',
-            'Actividad social aumentada',
-            'Consumo de alcohol en vía pública',
-          ]),
-          _buildDiaItem('Domingo', 'MEDIA-ALTA', Colors.orange, [
-            'Mercados llenos y aglomeraciones',
-            'Compras semanales familiares',
-            'Robos en transporte a ferias',
-          ]),
-          _buildDiaItem(
-            'Lunes',
-            'MEDIA',
-            const Color.fromARGB(255, 179, 163, 28),
-            [
-              'Robos a personas que cobran sueldo',
-              'Movimiento bancario aumentado',
-              'Gente con dinero en efectivo',
-            ],
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Días de la Semana', style: AppTextStyles.headline2),
+        const SizedBox(height: 16),
+        _buildDiaItem('Viernes y Sábado', 'ALTA', AppColors.dangerRed, [
+          'Mayor movimiento nocturno',
+          'Actividad social aumentada',
+          'Consumo de alcohol en vía pública',
+        ]),
+        _buildDiaItem('Domingo', 'MEDIA-ALTA', AppColors.warningAmber, [
+          'Mercados llenos y aglomeraciones',
+          'Compras semanales familiares',
+          'Robos en transporte a ferias',
+        ]),
+        _buildDiaItem('Lunes', 'MEDIA', AppColors.accentBlueLight, [
+          'Robos a personas que cobran sueldo',
+          'Movimiento bancario aumentado',
+          'Gente con dinero en efectivo',
+        ]),
+      ],
     );
   }
 
-  Widget _buildDiaItem(
-    String dia,
-    String nivel,
-    Color color,
-    List<String> motivos,
-  ) {
+  Widget _buildDiaItem(String dia, String nivel, Color color, List<String> motivos) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color),
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(dia, style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
+              Text(dia, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(4),
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  nivel,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+                child: Text(nivel, style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          ...motivos
-              .map(
-                (motivo) =>
-                    Text('• $motivo', style: const TextStyle(fontSize: 12)),
-              )
-              .toList(),
+          const SizedBox(height: 12),
+          ...motivos.map((m) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(Icons.check_rounded, color: AppColors.textHint, size: 14),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(m, style: AppTextStyles.caption)),
+                  ],
+                ),
+              )),
         ],
       ),
     );

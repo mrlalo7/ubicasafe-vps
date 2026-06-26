@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:ubicasafe/core/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import 'dart:math';
 
 class ReportarRobo extends StatefulWidget {
   const ReportarRobo({super.key});
@@ -11,7 +14,8 @@ class ReportarRobo extends StatefulWidget {
   State<ReportarRobo> createState() => _ReportarRoboState();
 }
 
-class _ReportarRoboState extends State<ReportarRobo> {
+class _ReportarRoboState extends State<ReportarRobo>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _descripcionController = TextEditingController();
   final TextEditingController _ubicacionController = TextEditingController();
@@ -27,529 +31,621 @@ class _ReportarRoboState extends State<ReportarRobo> {
   bool _enviandoCorreo = false;
   String _contenidoReporte = '';
 
-  // NUEVAS VARIABLES PARA DATOS DEL DISPOSITIVO
   String _marcaCelular = 'Samsung';
   String _modeloCelular = 'Media gama (Redmi, Moto G, A series)';
   String _estadoCelular = 'Nuevo';
   String _colorCelular = 'Negro / Gris';
 
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    _descripcionController.dispose();
+    _ubicacionController.dispose();
+    super.dispose();
+  }
+
+  Color get _nivelColor {
+    switch (_nivelViolencia) {
+      case 'Bajo':
+        return AppColors.safeGreen;
+      case 'Moderado':
+        return AppColors.warningAmber;
+      case 'Alto':
+      case 'Extremo':
+        return AppColors.dangerRed;
+      default:
+        return AppColors.safeGreen;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: Text('Reportar Robo', style: GoogleFonts.inter()),
-        backgroundColor: const Color.fromRGBO(66, 101, 253, 1.0),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: AppColors.textPrimary,
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Reportar Incidente', style: AppTextStyles.headline3),
         actions: [
           IconButton(
-            icon: const Icon(Icons.bar_chart),
+            icon: const Icon(
+              Icons.bar_chart_rounded,
+              color: AppColors.accentBlueLight,
+            ),
             onPressed: _mostrarEstadisticas,
+            tooltip: 'Estadísticas',
           ),
-          IconButton(icon: const Icon(Icons.save), onPressed: _guardarReporte),
+          IconButton(
+            icon: const Icon(Icons.save_rounded, color: AppColors.accentBlueLight),
+            onPressed: _guardarReporte,
+            tooltip: 'Guardar',
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Tarjeta de Estadísticas Rápidas
-            _buildEstadisticasRapidas(),
-            const SizedBox(height: 20),
-
-            // Formulario de Reporte
-            _buildFormularioReporte(),
-            const SizedBox(height: 20),
-
-            // Botones de Acción
-            _buildBotonesAccion(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEstadisticasRapidas() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Estadísticas de Hoy',
-              style: GoogleFonts.inter(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+      body: FadeTransition(
+        opacity: _fadeAnim,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildTarjetaEstadistica('Reportes Hoy', '15', Colors.blue),
-                _buildTarjetaEstadistica(
-                  'Zona Más Peligrosa',
-                  'Ceja',
-                  Colors.red,
+                // ── Estadísticas rápidas ──
+                _buildEstadisticasRapidas(),
+                const SizedBox(height: 16),
+
+                // ── Sección: Tipo de incidente ──
+                _buildSectionLabel('Tipo de Incidente', Icons.category_rounded),
+                const SizedBox(height: 10),
+                _buildTipoRoboSelector(),
+                const SizedBox(height: 16),
+
+                // ── Datos del dispositivo (condicional) ──
+                if (_tipoRobo == 'Robo de celular') ...[
+                  _buildSectionLabel('Datos del Dispositivo', Icons.smartphone_rounded),
+                  const SizedBox(height: 10),
+                  _buildSeccionDatosDispositivo(),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Ubicación y Fecha ──
+                _buildSectionLabel('Ubicación y Fecha', Icons.location_on_rounded),
+                const SizedBox(height: 10),
+                GlassCard(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      DarkTextField(
+                        controller: _ubicacionController,
+                        label: 'Ubicación del Incidente',
+                        hint: 'Ej: Av. 16 de Julio, cerca del mercado',
+                        prefixIcon: Icons.pin_drop_outlined,
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Campo obligatorio' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(child: _buildDatePicker()),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTimePicker()),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                _buildTarjetaEstadistica('Tendencia', '+5%', Colors.orange),
+                const SizedBox(height: 16),
+
+                // ── Descripción ──
+                _buildSectionLabel('Descripción', Icons.description_rounded),
+                const SizedBox(height: 10),
+                GlassCard(
+                  padding: const EdgeInsets.all(20),
+                  child: DarkTextField(
+                    controller: _descripcionController,
+                    label: 'Descripción del Incidente',
+                    hint: 'Describa lo sucedido en detalle...',
+                    maxLines: 5,
+                    validator: (v) =>
+                        (v == null || v.isEmpty)
+                            ? 'Por favor describa el incidente'
+                            : null,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Nivel de violencia ──
+                _buildSectionLabel('Nivel de Violencia', Icons.warning_rounded),
+                const SizedBox(height: 10),
+                _buildNivelViolenciaSelector(),
+                const SizedBox(height: 16),
+
+                // ── Checkboxes ──
+                _buildSectionLabel('Detalles Adicionales', Icons.checklist_rounded),
+                const SizedBox(height: 10),
+                _buildCheckboxes(),
+                const SizedBox(height: 24),
+
+                // ── Botón reportar ──
+                _buildBotonReportar(),
+                const SizedBox(height: 32),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTarjetaEstadistica(String titulo, String valor, Color color) {
-    return Column(
+  Widget _buildSectionLabel(String text, IconData icon) {
+    return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
+        Icon(icon, color: AppColors.accentBlueLight, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          text.toUpperCase(),
+          style: AppTextStyles.label.copyWith(
+            color: AppColors.accentBlueLight,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
           ),
-          child: Icon(Icons.assessment, color: color),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          valor,
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        Text(
-          titulo,
-          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
-          textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
-  Widget _buildFormularioReporte() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Reportar Incidente',
-                style: GoogleFonts.inter(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Tipo de Robo
-              _buildDropdown(
-                'Tipo de Robo',
-                _tipoRobo,
-                ['Robo a Persona', 'Robo de celular', 'Otro'],
-                (value) => setState(() => _tipoRobo = value!),
-              ),
-
-              // Mostrar sección de datos del dispositivo solo si es robo de celular
-              if (_tipoRobo == 'Robo de celular') ...[
-                _buildSeccionDatosDispositivo(),
-                const SizedBox(height: 12),
-              ],
-
-              // Ubicación
-              _buildTextField(
-                'Ubicación del Incidente',
-                _ubicacionController,
-                'Ej: Av. 16 de Julio, cerca del mercado',
-              ),
-
-              // Fecha y Hora
-              Row(
-                children: [
-                  Expanded(child: _buildDatePicker()),
-                  const SizedBox(width: 10),
-                  Expanded(child: _buildTimePicker()),
-                ],
-              ),
-
-              // Descripción
-              _buildTextArea(
-                'Descripción del Incidente',
-                _descripcionController,
-                'Describa lo sucedido en detalle...',
-              ),
-
-              // Nivel de Violencia
-              _buildDropdown(
-                'Nivel de Violencia',
-                _nivelViolencia,
-                ['Bajo', 'Moderado', 'Alto', 'Extremo'],
-                (value) => setState(() => _nivelViolencia = value!),
-              ),
-
-              // Checkboxes
-              _buildCheckboxes(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // NUEVA SECCIÓN: DATOS DEL DISPOSITIVO
-  Widget _buildSeccionDatosDispositivo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
+  Widget _buildEstadisticasRapidas() {
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      gradient: const LinearGradient(
+        colors: [Color(0x18FF3B30), Color(0x08FF3B30)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '📱 Datos del dispositivo',
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 28, 64, 96),
-            ),
+          Row(
+            children: [
+              const Icon(Icons.bar_chart_rounded, color: AppColors.accentRed, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'ESTADÍSTICAS DE HOY',
+                style: AppTextStyles.label.copyWith(
+                  color: AppColors.accentRed,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-
-          // Marca del celular
-          _buildDropdownDispositivo(
-            '5. Marca del celular:',
-            _marcaCelular,
-            [
-              'Samsung',
-              'Xiaomi',
-              'Motorola',
-              'Huawei',
-              'iPhone',
-              'Otras marcas',
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatChip('15', 'Reportes', AppColors.accentRed),
+              _buildStatChip('Ceja', 'Zona Riesgo', AppColors.warningAmber),
+              _buildStatChip('+5%', 'Tendencia', AppColors.dangerRed),
             ],
-            (value) => setState(() => _marcaCelular = value!),
           ),
+        ],
+      ),
+    );
+  }
 
-          // Modelo aproximado
-          _buildDropdownDispositivo(
-            '6. Modelo aproximado:',
+  Widget _buildStatChip(String value, String label, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: AppTextStyles.headline3.copyWith(color: color, fontSize: 22),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: AppTextStyles.caption),
+      ],
+    );
+  }
+
+  Widget _buildTipoRoboSelector() {
+    final tipos = ['Robo a Persona', 'Robo de celular', 'Otro'];
+    return GlassCard(
+      padding: const EdgeInsets.all(6),
+      child: Row(
+        children: tipos.map((tipo) {
+          final selected = _tipoRobo == tipo;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _tipoRobo = tipo),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                decoration: BoxDecoration(
+                  gradient: selected ? AppGradients.headerBlue : null,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: selected ? AppShadows.blueGlow : null,
+                ),
+                child: Text(
+                  tipo,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.caption.copyWith(
+                    color: selected ? Colors.white : AppColors.textSecondary,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildNivelViolenciaSelector() {
+    final niveles = {
+      'Bajo': AppColors.safeGreen,
+      'Moderado': AppColors.warningAmber,
+      'Alto': AppColors.dangerRed,
+      'Extremo': const Color(0xFFFF1744),
+    };
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Nivel seleccionado:', style: AppTextStyles.caption),
+          const SizedBox(height: 12),
+          Row(
+            children: niveles.entries.map((entry) {
+              final selected = _nivelViolencia == entry.key;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _nivelViolencia = entry.key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? entry.value.withOpacity(0.2)
+                            : AppColors.glassWhite,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? entry.value
+                              : AppColors.glassBorder,
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        entry.key,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.caption.copyWith(
+                          color: selected ? entry.value : AppColors.textHint,
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeccionDatosDispositivo() {
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      gradient: const LinearGradient(
+        colors: [Color(0x18BF5AF2), Color(0x08BF5AF2)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.smartphone_rounded, color: Color(0xFFBF5AF2), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                '📱 Datos del dispositivo robado',
+                style: AppTextStyles.body.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _buildDarkDropdown('Marca del celular', _marcaCelular,
+              ['Samsung', 'Xiaomi', 'Motorola', 'Huawei', 'iPhone', 'Otras marcas'],
+              (v) => setState(() => _marcaCelular = v!)),
+          _buildDarkDropdown(
+            'Modelo aproximado',
             _modeloCelular,
             [
               'Alta gama (Galaxy S, iPhone, Xiaomi Pro)',
               'Media gama (Redmi, Moto G, A series)',
               'Baja gama (celulares básicos o antiguos)',
             ],
-            (value) => setState(() => _modeloCelular = value!),
+            (v) => setState(() => _modeloCelular = v!),
           ),
+          _buildDarkDropdown('Estado del celular', _estadoCelular,
+              ['Nuevo', 'Usado (buen estado)', 'Usado (dañado o pantalla rota)'],
+              (v) => setState(() => _estadoCelular = v!)),
+          _buildDarkDropdown('Color del dispositivo', _colorCelular,
+              ['Negro / Gris', 'Azul', 'Blanco', 'Rojo', 'Otro'],
+              (v) => setState(() => _colorCelular = v!),
+              isLast: true),
+        ],
+      ),
+    );
+  }
 
-          // Estado del celular
-          _buildDropdownDispositivo(
-            '7. Estado del celular antes del robo:',
-            _estadoCelular,
-            ['Nuevo', 'Usado (buen estado)', 'Usado (dañado o pantalla rota)'],
-            (value) => setState(() => _estadoCelular = value!),
-          ),
-
-          // Color del dispositivo
-          _buildDropdownDispositivo(
-            '8. Color del dispositivo:',
-            _colorCelular,
-            ['Negro / Gris', 'Azul', 'Blanco', 'Rojo', 'Otro'],
-            (value) => setState(() => _colorCelular = value!),
+  Widget _buildDarkDropdown(
+    String label,
+    String value,
+    List<String> items,
+    Function(String?) onChanged, {
+    bool isLast = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTextStyles.label),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            value: value,
+            dropdownColor: AppColors.bgCard,
+            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary, fontSize: 14),
+            iconEnabledColor: AppColors.textSecondary,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppColors.accentBlue, width: 1.5),
+              ),
+              filled: true,
+              fillColor: AppColors.glassWhite,
+              isDense: true,
+            ),
+            items: items.map((item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item, style: AppTextStyles.body.copyWith(fontSize: 13, color: AppColors.textPrimary)),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            isExpanded: true,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDropdownDispositivo(
-    String label,
-    String value,
-    List<String> items,
-    Function(String?) onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-        const SizedBox(height: 5),
-        DropdownButtonFormField<String>(
-          value: value,
-          items: items.map((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item, style: GoogleFonts.inter(fontSize: 14)),
-            );
-          }).toList(),
-          onChanged: onChanged,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            isDense: true,
-          ),
-          isExpanded: true,
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
-  Widget _buildDropdown(
-    String label,
-    String value,
-    List<String> items,
-    Function(String?) onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        DropdownButtonFormField<String>(
-          value: value,
-          items: items.map((String item) {
-            return DropdownMenuItem<String>(value: item, child: Text(item));
-          }).toList(),
-          onChanged: onChanged,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12),
-          ),
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller,
-    String hint,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            hintText: hint,
-          ),
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Este campo es obligatorio';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
-  Widget _buildTextArea(
-    String label,
-    TextEditingController controller,
-    String hint,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        TextFormField(
-          controller: controller,
-          maxLines: 4,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            hintText: hint,
-            alignLabelWithHint: true,
-          ),
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Por favor describa el incidente';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
   Widget _buildDatePicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Fecha del Incidente',
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+    return GestureDetector(
+      onTap: _seleccionarFecha,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
         ),
-        const SizedBox(height: 5),
-        InkWell(
-          onTap: _seleccionarFecha,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(4),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Text(
+              '${_fechaIncidente.day}/${_fechaIncidente.month}/${_fechaIncidente.year}',
+              style: AppTextStyles.body.copyWith(fontSize: 13),
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  '${_fechaIncidente.day}/${_fechaIncidente.month}/${_fechaIncidente.year}',
-                  style: GoogleFonts.inter(),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildTimePicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Hora del Incidente',
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+    return GestureDetector(
+      onTap: _seleccionarHora,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
         ),
-        const SizedBox(height: 5),
-        InkWell(
-          onTap: _seleccionarHora,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(4),
+        child: Row(
+          children: [
+            const Icon(Icons.access_time_rounded, size: 18, color: AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Text(
+              _horaIncidente.format(context),
+              style: AppTextStyles.body.copyWith(fontSize: 13),
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.access_time, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  _horaIncidente.format(context),
-                  style: GoogleFonts.inter(),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildCheckboxes() {
-    return Column(
-      children: [
-        CheckboxListTile(
-          title: Text('Hubo lesiones físicas', style: GoogleFonts.inter()),
-          value: _lesiones,
-          onChanged: (value) => setState(() => _lesiones = value!),
-        ),
-        CheckboxListTile(
-          title: Text('Se utilizaron armas', style: GoogleFonts.inter()),
-          value: _armas,
-          onChanged: (value) {
-            setState(() {
-              _armas = value!;
-              // Si se desmarca "Se utilizaron armas", desmarcar también los tipos específicos
-              if (!_armas) {
-                _armaFuego = false;
-                _armaBlanca = false;
-              }
-            });
-          },
-        ),
-
-        // NUEVOS CHECKBOXES PARA TIPOS DE ARMAS (solo se muestran si _armas es true)
-        if (_armas) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 16.0),
-            child: Column(
-              children: [
-                CheckboxListTile(
-                  title: Text(
-                    '☐ Arma de fuego (Pistola o revólver)',
-                    style: GoogleFonts.inter(),
-                  ),
-                  value: _armaFuego,
-                  onChanged: (value) => setState(() => _armaFuego = value!),
-                ),
-                CheckboxListTile(
-                  title: Text(
-                    '☐ Arma blanca (Cuchillo, navaja, etc.)',
-                    style: GoogleFonts.inter(),
-                  ),
-                  value: _armaBlanca,
-                  onChanged: (value) => setState(() => _armaBlanca = value!),
-                ),
-              ],
-            ),
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildStyledCheckbox(
+            'Hubo lesiones físicas',
+            _lesiones,
+            AppColors.warningAmber,
+            (v) => setState(() => _lesiones = v!),
           ),
+          _buildStyledCheckbox(
+            'Se utilizaron armas',
+            _armas,
+            AppColors.dangerRed,
+            (v) {
+              setState(() {
+                _armas = v!;
+                if (!_armas) {
+                  _armaFuego = false;
+                  _armaBlanca = false;
+                }
+              });
+            },
+          ),
+          if (_armas) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Column(
+                children: [
+                  _buildStyledCheckbox(
+                    'Arma de fuego (Pistola o revólver)',
+                    _armaFuego,
+                    AppColors.dangerRed,
+                    (v) => setState(() => _armaFuego = v!),
+                    isSubItem: true,
+                  ),
+                  _buildStyledCheckbox(
+                    'Arma blanca (Cuchillo, navaja, etc.)',
+                    _armaBlanca,
+                    AppColors.dangerRed,
+                    (v) => setState(() => _armaBlanca = v!),
+                    isSubItem: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
-  Widget _buildBotonesAccion() {
-    return Column(
-      children: [
-        Row(
+  Widget _buildStyledCheckbox(
+    String label,
+    bool value,
+    Color accentColor,
+    Function(bool?) onChanged, {
+    bool isSubItem = false,
+  }) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
           children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                icon: _enviandoCorreo
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : const Icon(Icons.report),
-                label: _enviandoCorreo
-                    ? const Text('Enviando...')
-                    : const Text('Reportar Incidente'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: value ? accentColor.withOpacity(0.2) : AppColors.glassWhite,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: value ? accentColor : AppColors.glassBorder,
+                  width: value ? 1.5 : 1,
                 ),
-                onPressed: _enviandoCorreo ? null : _enviarReporte,
               ),
+              child: value
+                  ? Icon(Icons.check_rounded, size: 14, color: accentColor)
+                  : null,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.bar_chart),
-                label: const Text('Estadísticas'),
-                onPressed: _mostrarEstadisticas,
+              child: Text(
+                label,
+                style: (isSubItem ? AppTextStyles.bodySmall : AppTextStyles.body)
+                    .copyWith(color: AppColors.textPrimary),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBotonReportar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GradientButton(
+          text: _enviandoCorreo ? 'Enviando...' : 'Reportar Incidente',
+          icon: _enviandoCorreo ? null : Icons.report_rounded,
+          isLoading: _enviandoCorreo,
+          colors: const [AppColors.accentRed, AppColors.accentRedDark],
+          shadows: AppShadows.redGlow,
+          height: 58,
+          onPressed: _enviandoCorreo ? null : _enviarReporte,
+        ),
         const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _mostrarEstadisticas,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.glassWhite,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.bar_chart_rounded, color: AppColors.accentBlueLight, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Ver Estadísticas',
+                  style: AppTextStyles.button.copyWith(
+                    color: AppColors.accentBlueLight,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -560,6 +656,17 @@ class _ReportarRoboState extends State<ReportarRobo> {
       initialDate: _fechaIncidente,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.accentBlue,
+              surface: AppColors.bgCard,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null && picked != _fechaIncidente) {
       setState(() => _fechaIncidente = picked);
@@ -570,6 +677,17 @@ class _ReportarRoboState extends State<ReportarRobo> {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _horaIncidente,
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.accentBlue,
+              surface: AppColors.bgCard,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null && picked != _horaIncidente) {
       setState(() => _horaIncidente = picked);
@@ -577,79 +695,48 @@ class _ReportarRoboState extends State<ReportarRobo> {
   }
 
   void _enviarReporte() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _enviandoCorreo = true;
-    });
+    HapticFeedback.heavyImpact();
+    setState(() => _enviandoCorreo = true);
 
-    // Generar el contenido primero
     _contenidoReporte = _generarContenidoReporte();
 
     try {
       final subject = Uri.encodeComponent('🚨 Reporte de Robo - UbicaSafe');
       final body = Uri.encodeComponent(_contenidoReporte);
+      final mailtoUrl = 'mailto:ubicasafeapp@gmail.com?subject=$subject&body=$body';
 
-      // ✅ CORREO ACTUALIZADO AQUÍ
-      final mailtoUrl =
-          'mailto:ubicasafeapp@gmail.com?subject=$subject&body=$body';
-
-      print('🔄 Intentando abrir correo...');
-
-      // INTENTAR MÚLTIPLES MÉTODOS
       bool correoAbierto = false;
 
-      // Método 1: mailto estándar con verificación
       if (await canLaunchUrl(Uri.parse(mailtoUrl))) {
-        print('✅ Método 1 (mailto) disponible');
         try {
-          await launchUrl(
-            Uri.parse(mailtoUrl),
-            mode: LaunchMode.externalApplication,
-          );
+          await launchUrl(Uri.parse(mailtoUrl), mode: LaunchMode.externalApplication);
           correoAbierto = true;
-          print('✅ Correo abierto con método 1');
-        } catch (e) {
-          print('❌ Error método 1: $e');
-        }
+        } catch (_) {}
       }
 
-      // Método 2: Intentar sin verificación (a veces canLaunchUrl falla)
       if (!correoAbierto) {
-        print('🔄 Probando método 2 (sin verificación)...');
         try {
-          await launchUrl(
-            Uri.parse(mailtoUrl),
-            mode: LaunchMode.externalApplication,
-          );
+          await launchUrl(Uri.parse(mailtoUrl), mode: LaunchMode.externalApplication);
           correoAbierto = true;
-          print('✅ Correo abierto con método 2');
-        } catch (e) {
-          print('❌ Error método 2: $e');
-        }
+        } catch (_) {}
       }
 
-      // MOSTRAR RESULTADO
       if (correoAbierto) {
         _mostrarDialogoExito();
       } else {
         _mostrarDialogoGmailNoAbrio();
       }
     } catch (e) {
-      print('❌ Error general: $e');
       _mostrarDialogoGmailNoAbrio();
     } finally {
-      setState(() {
-        _enviandoCorreo = false;
-      });
+      setState(() => _enviandoCorreo = false);
     }
   }
 
   String _generarContenidoReporte() {
-    String contenido =
-        '''
+    String contenido = '''
 REPORTE DE ROBO - UBICASAFE
 ============================
 
@@ -663,92 +750,57 @@ REPORTE DE ROBO - UBICASAFE
 • Uso de Armas: ${_armas ? "Sí" : "No"}
 ''';
 
-    // Añadir información de tipos de armas si se utilizaron armas
     if (_armas) {
-      contenido += '• Tipo de Armas Utilizadas:\n';
-      if (_armaFuego) contenido += '  - Arma de fuego (Pistola o revólver)\n';
-      if (_armaBlanca)
-        contenido += '  - Arma blanca (Cuchillo, navaja, etc.)\n';
-      if (!_armaFuego && !_armaBlanca)
-        contenido += '  - Tipo no especificado\n';
+      contenido += '• Tipo de Armas:\n';
+      if (_armaFuego) contenido += '  - Arma de fuego\n';
+      if (_armaBlanca) contenido += '  - Arma blanca\n';
+      if (!_armaFuego && !_armaBlanca) contenido += '  - Tipo no especificado\n';
     }
 
-    contenido +=
-        '''
-📝 DESCRIPCIÓN DETALLADA:
+    contenido += '''
+📝 DESCRIPCIÓN:
 ${_descripcionController.text}
 ''';
 
-    // Añadir sección de datos del dispositivo solo si es robo de celular
     if (_tipoRobo == 'Robo de celular') {
-      contenido +=
-          '''
+      contenido += '''
 
 📱 DATOS DEL DISPOSITIVO:
-• Marca del celular: $_marcaCelular
-• Modelo aproximado: $_modeloCelular
-• Estado del celular: $_estadoCelular
-• Color del dispositivo: $_colorCelular
+• Marca: $_marcaCelular
+• Modelo: $_modeloCelular
+• Estado: $_estadoCelular
+• Color: $_colorCelular
 ''';
     }
 
-    contenido +=
-        '''
+    contenido += '''
 
-📄 INFORMACIÓN ADICIONAL:
-• Reporte generado el: ${DateTime.now()}
-• Aplicación: UbicaSafe
-
+📄 INFO ADICIONAL:
+• Generado: ${DateTime.now()}
+• App: UbicaSafe
 ---
-Este reporte ha sido generado automáticamente por UbicaSafe.
+Este reporte fue generado automáticamente por UbicaSafe.
 ''';
-
     return contenido;
   }
 
   void _mostrarDialogoGmailNoAbrio() {
-    // Guardar el reporte primero
     _guardarReporteSilencioso();
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
           children: [
-            Icon(Icons.warning, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Gmail no se pudo abrir'),
+            const Icon(Icons.warning_rounded, color: AppColors.warningAmber),
+            const SizedBox(width: 8),
+            Text('Gmail no disponible', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Para enviar el reporte manualmente:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '1. Abre Gmail manualmente\n'
-                '2. Envía un correo a: ubicasafeapp@gmail.com\n' // ✅ CORREO ACTUALIZADO
-                '3. Usa el asunto: 🚨 Reporte de Robo - UbicaSafe\n'
-                '4. Copia y pega el contenido del reporte guardado',
-                style: TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'El reporte ya fue guardado en tu dispositivo.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Ruta: /storage/emulated/0/Android/data/com.example.ubicasafe/cache/',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-              ),
-            ],
-          ),
+        content: Text(
+          'Envía el reporte manualmente a:\nubicasafeapp@gmail.com\n\nEl reporte fue guardado en tu dispositivo.',
+          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -756,11 +808,11 @@ Este reporte ha sido generado automáticamente por UbicaSafe.
               Navigator.pop(context);
               _abrirGmailManualmente();
             },
-            child: const Text('Abrir Gmail'),
+            child: const Text('Abrir Gmail', style: TextStyle(color: AppColors.accentBlueLight)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Entendido'),
+            child: const Text('Entendido', style: TextStyle(color: AppColors.textSecondary)),
           ),
         ],
       ),
@@ -769,42 +821,33 @@ Este reporte ha sido generado automáticamente por UbicaSafe.
 
   void _abrirGmailManualmente() async {
     try {
-      // Intentar abrir Gmail específicamente
-      const gmailUrl = 'https://mail.google.com/';
-      if (await canLaunchUrl(Uri.parse(gmailUrl))) {
-        await launchUrl(Uri.parse(gmailUrl));
+      if (await canLaunchUrl(Uri.parse('https://mail.google.com/'))) {
+        await launchUrl(Uri.parse('https://mail.google.com/'));
       }
-    } catch (e) {
-      print('Error al abrir Gmail manualmente: $e');
-    }
+    } catch (_) {}
   }
 
   void _mostrarDialogoExito() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Gmail Abierto'),
+            const Icon(Icons.check_circle_rounded, color: AppColors.safeGreen),
+            const SizedBox(width: 8),
+            Text('¡Reporte Enviado!', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
           ],
         ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Se abrió Gmail con tu reporte.'),
-            SizedBox(height: 8),
-            Text(
-              'Solo presiona "ENVIAR" para completar el reporte.',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        content: Text(
+          'Se abrió Gmail con tu reporte.\nPresiona "Enviar" para completar el reporte.',
+          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: const Text('OK', style: TextStyle(color: AppColors.accentBlueLight)),
           ),
         ],
       ),
@@ -814,47 +857,32 @@ Este reporte ha sido generado automáticamente por UbicaSafe.
   Future<void> _guardarReporteSilencioso() async {
     try {
       final output = await getTemporaryDirectory();
-      final file = File(
-        '${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt',
-      );
+      final file = File('${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt');
       await file.writeAsString(_contenidoReporte);
-      print('📁 Reporte guardado en: ${file.path}');
-    } catch (e) {
-      print('Error guardando reporte: $e');
-    }
+    } catch (_) {}
   }
 
-  // Método para el botón de guardar
   Future<void> _guardarReporte() async {
     _contenidoReporte = _generarContenidoReporte();
 
     final output = await getTemporaryDirectory();
-    final file = File(
-      '${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt',
-    );
-
+    final file = File('${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt');
     await file.writeAsString(_contenidoReporte);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reporte Guardado'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('El reporte se ha guardado exitosamente.'),
-            const SizedBox(height: 10),
-            Text(
-              'Ubicación: ${file.path}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Reporte Guardado', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
+        content: Text(
+          'El reporte se ha guardado exitosamente en tu dispositivo.',
+          style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: const Text('OK', style: TextStyle(color: AppColors.accentBlueLight)),
           ),
         ],
       ),
@@ -862,47 +890,57 @@ Este reporte ha sido generado automáticamente por UbicaSafe.
   }
 
   void _mostrarEstadisticas() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Estadísticas de Robos'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildEstadisticaSimple('Reportes Hoy', '15', Colors.blue),
-              _buildEstadisticaSimple(
-                'Zona Más Peligrosa',
-                'Ceja El Alto',
-                Colors.red,
-              ),
-              _buildEstadisticaSimple('Robos a Persona', '65%', Colors.orange),
-              _buildEstadisticaSimple('Robos a Vivienda', '20%', Colors.green),
-              _buildEstadisticaSimple('Robos a Vehículo', '15%', Colors.purple),
-            ],
-          ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.bgSurface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.glassBorder),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Estadísticas de Robos', style: AppTextStyles.headline3),
+            const SizedBox(height: 4),
+            Text('El Alto · La Paz — Hoy', style: AppTextStyles.bodySmall),
+            const SizedBox(height: 20),
+            _buildEstadRow('Reportes Hoy', '15', AppColors.accentBlue),
+            _buildEstadRow('Zona Más Peligrosa', 'Ceja El Alto', AppColors.dangerRed),
+            _buildEstadRow('Robos a Persona', '65%', AppColors.warningAmber),
+            _buildEstadRow('Robos a Vivienda', '20%', AppColors.safeGreen),
+            _buildEstadRow('Robos a Vehículo', '15%', const Color(0xFFBF5AF2)),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildEstadisticaSimple(String titulo, String valor, Color color) {
-    return ListTile(
-      leading: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-      title: Text(titulo),
-      trailing: Text(
-        valor,
-        style: TextStyle(fontWeight: FontWeight.bold, color: color),
+  Widget _buildEstadRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: AppTextStyles.body.copyWith(fontSize: 14))),
+          Text(
+            value,
+            style: AppTextStyles.body.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
