@@ -1,0 +1,639 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:ubicasafe/core/app_theme.dart';
+import 'package:ubicasafe/main.dart';
+
+class ConfiguracionScreen extends StatefulWidget {
+  const ConfiguracionScreen({super.key});
+
+  @override
+  State<ConfiguracionScreen> createState() => _ConfiguracionScreenState();
+}
+
+class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
+  bool _temaOscuro = false;
+  bool _notificaciones = true;
+  bool _ubicacionAuto = true;
+  bool _sonidos = true;
+  bool _vibracion = true;
+  String _idioma = 'Español';
+  String _unidadesDistancia = 'Kilómetros';
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarConfiguraciones();
+  }
+
+  Future<void> _cargarConfiguraciones() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _temaOscuro = prefs.getBool('tema_oscuro') ?? false;
+      _notificaciones = prefs.getBool('notificaciones') ?? true;
+      _ubicacionAuto = prefs.getBool('ubicacion_auto') ?? true;
+      _sonidos = prefs.getBool('sonidos') ?? true;
+      _vibracion = prefs.getBool('vibracion') ?? true;
+      _idioma = prefs.getString('idioma') ?? 'Español';
+      _unidadesDistancia =
+          prefs.getString('unidades_distancia') ?? 'Kilómetros';
+    });
+  }
+
+  Future<void> _guardarConfiguracion(String clave, dynamic valor) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (valor is bool) {
+      await prefs.setBool(clave, valor);
+    } else if (valor is String) {
+      await prefs.setString(clave, valor);
+    }
+  }
+
+  // ← Añade este import
+
+  void _cambiarTemaOscuro(bool value) {
+    setState(() {
+      _temaOscuro = value;
+    });
+    _guardarConfiguracion('tema_oscuro', value);
+
+    // AÑADE ESTAS 2 LÍNEAS para cambiar el tema inmediatamente:
+    temaOscuroNotifier.value = value;
+
+    _mostrarMensaje('Tema ${value ? 'oscuro' : 'claro'} activado');
+  }
+
+  void _cambiarNotificaciones(bool value) {
+    setState(() {
+      _notificaciones = value;
+    });
+    _guardarConfiguracion('notificaciones', value);
+    _mostrarMensaje('Notificaciones ${value ? 'activadas' : 'desactivadas'}');
+  }
+
+  void _cambiarUbicacionAuto(bool value) {
+    setState(() {
+      _ubicacionAuto = value;
+    });
+    _guardarConfiguracion('ubicacion_auto', value);
+    _mostrarMensaje(
+      'Ubicación automática ${value ? 'activada' : 'desactivada'}',
+    );
+  }
+
+  void _cambiarSonidos(bool value) {
+    setState(() {
+      _sonidos = value;
+    });
+    _guardarConfiguracion('sonidos', value);
+    _mostrarMensaje('Sonidos ${value ? 'activados' : 'desactivados'}');
+  }
+
+  void _cambiarVibracion(bool value) {
+    setState(() {
+      _vibracion = value;
+    });
+    _guardarConfiguracion('vibracion', value);
+    _mostrarMensaje('Vibración ${value ? 'activada' : 'desactivada'}');
+  }
+
+  void _cambiarIdioma(String? value) {
+    if (value != null) {
+      setState(() {
+        _idioma = value;
+      });
+      _guardarConfiguracion('idioma', value);
+      _mostrarMensaje('Idioma cambiado a $value');
+    }
+  }
+
+  void _cambiarUnidadesDistancia(String? value) {
+    if (value != null) {
+      setState(() {
+        _unidadesDistancia = value;
+      });
+      _guardarConfiguracion('unidades_distancia', value);
+      _mostrarMensaje('Unidades cambiadas a $value');
+    }
+  }
+
+  void _mostrarMensaje(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _mostrarDialogoPrivacidad() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.security, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Política de Privacidad'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'En UbicaSafe respetamos tu privacidad:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              _buildItemPrivacidad(
+                '📍',
+                'Tu ubicación solo se usa para mostrar zonas seguras e inseguras',
+              ),
+              _buildItemPrivacidad(
+                '📊',
+                'Los datos de reportes son anónimos y agregados',
+              ),
+              _buildItemPrivacidad(
+                '🔒',
+                'No compartimos tu información personal con terceros',
+              ),
+              _buildItemPrivacidad(
+                '📱',
+                'Puedes desactivar la ubicación en cualquier momento',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Para más información, visita nuestro sitio web.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _abrirSitioWeb();
+            },
+            child: const Text('Sitio Web'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemPrivacidad(String emoji, String texto) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(emoji),
+          const SizedBox(width: 8),
+          Expanded(child: Text(texto)),
+        ],
+      ),
+    );
+  }
+
+  void _abrirSitioWeb() async {
+    const url = 'https://ubicasafe.com'; // Reemplaza con tu URL real
+    try {
+      await launchUrl(Uri.parse(url));
+    } catch (e) {
+      _mostrarMensaje('No se pudo abrir el sitio web');
+    }
+  }
+
+  void _mostrarDialogoAcercaDe() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Acerca de UbicaSafe'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color.fromRGBO(
+                      66,
+                      101,
+                      253,
+                      1.0,
+                    ).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.location_on,
+                    size: 40,
+                    color: Color(0XFFFF4317),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'UbicaSafe v1.0.0',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Tu compañero de seguridad personal',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              _buildInfoApp('🚀', 'Desarrollado con Flutter'),
+              _buildInfoApp('📅', 'Versión: 1.0.0 (Build 25)'),
+              _buildInfoApp('🏢', 'UbicaSafe Team'),
+              _buildInfoApp('📧', 'ubicasafeapp@gmail.com'),
+              const SizedBox(height: 16),
+              const Text(
+                '© 2024 UbicaSafe. Todos los derechos reservados.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _contactarSoporte();
+            },
+            child: const Text('Contactar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoApp(String emoji, String texto) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [Text(emoji), const SizedBox(width: 8), Text(texto)],
+      ),
+    );
+  }
+
+  void _contactarSoporte() async {
+    final subject = Uri.encodeComponent('Soporte - UbicaSafe');
+    final body = Uri.encodeComponent('''
+Hola equipo de UbicaSafe,
+
+[Escribe tu consulta o problema aquí]
+
+---
+App: UbicaSafe v1.0.0
+Dispositivo: [Información del dispositivo]
+    ''');
+
+    final mailtoUrl =
+        'mailto:ubicasafeapp@gmail.com?subject=$subject&body=$body';
+
+    try {
+      await launchUrl(Uri.parse(mailtoUrl));
+    } catch (e) {
+      _mostrarMensaje('No se pudo abrir el cliente de correo');
+    }
+  }
+
+  void _mostrarDialogoEliminarDatos() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Eliminar Datos'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '¿Estás seguro de que quieres eliminar todos tus datos?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text('Esta acción:'),
+            Text('• Eliminará tu historial de reportes'),
+            Text('• Restablecerá todas las configuraciones'),
+            Text('• No se puede deshacer'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _eliminarDatos();
+            },
+            child: const Text(
+              'Eliminar Todo',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _eliminarDatos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    // Recargar configuraciones por defecto
+    _cargarConfiguraciones();
+
+    _mostrarMensaje('Todos los datos han sido eliminados');
+  }
+
+  Widget _buildSettingSection(String title, List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: AppTextStyles.label.copyWith(
+                color: AppColors.accentBlueLight,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchSetting(
+    String title,
+    String subtitle,
+    bool value,
+    Function(bool) onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdownSetting(
+    String title,
+    String subtitle,
+    String value,
+    List<String> items,
+    Function(String?) onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: AppTextStyles.caption),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: value,
+            dropdownColor: AppColors.bgCard,
+            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary, fontSize: 14),
+            iconEnabledColor: AppColors.textSecondary,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.glassBorder),
+              ),
+              filled: true,
+              fillColor: AppColors.glassWhite,
+              isDense: true,
+            ),
+            items: items.map((item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item, style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textPrimary)),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            isExpanded: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionSetting(
+    String title,
+    String subtitle,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: AppColors.accentBlueLight, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textHint, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgDark,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Configuración', style: AppTextStyles.headline3),
+      ),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        children: [
+          const SizedBox(height: 8),
+          // APARIENCIA
+          _buildSettingSection('🎨 APARIENCIA', [
+            _buildSwitchSetting(
+              'Tema Oscuro',
+              'Activar el modo oscuro en la aplicación',
+              _temaOscuro,
+              _cambiarTemaOscuro,
+            ),
+          ]),
+
+          // NOTIFICACIONES
+          _buildSettingSection('🔔 NOTIFICACIONES', [
+            _buildSwitchSetting(
+              'Notificaciones',
+              'Recibir alertas y notificaciones importantes',
+              _notificaciones,
+              _cambiarNotificaciones,
+            ),
+            _buildSwitchSetting(
+              'Sonidos',
+              'Reproducir sonidos en las notificaciones',
+              _sonidos,
+              _cambiarSonidos,
+            ),
+            _buildSwitchSetting(
+              'Vibración',
+              'Vibrar en notificaciones importantes',
+              _vibracion,
+              _cambiarVibracion,
+            ),
+          ]),
+
+          // UBICACIÓN
+          _buildSettingSection('📍 UBICACIÓN', [
+            _buildSwitchSetting(
+              'Ubicación Automática',
+              'Actualizar ubicación automáticamente',
+              _ubicacionAuto,
+              _cambiarUbicacionAuto,
+            ),
+            _buildDropdownSetting(
+              'Unidades de Distancia',
+              'Selecciona kilómetros o millas',
+              _unidadesDistancia,
+              ['Kilómetros', 'Millas'],
+              _cambiarUnidadesDistancia,
+            ),
+          ]),
+
+          // GENERAL
+          _buildSettingSection('⚙️ GENERAL', [
+            _buildDropdownSetting(
+              'Idioma',
+              'Selecciona el idioma de la aplicación',
+              _idioma,
+              ['Español', 'English', 'Português'],
+              _cambiarIdioma,
+            ),
+          ]),
+
+          // INFORMACIÓN
+          _buildSettingSection('📋 INFORMACIÓN', [
+            _buildActionSetting(
+              'Política de Privacidad',
+              'Cómo manejamos tus datos',
+              Icons.security,
+              _mostrarDialogoPrivacidad,
+            ),
+            _buildActionSetting(
+              'Acerca de UbicaSafe',
+              'Información de la aplicación',
+              Icons.info,
+              _mostrarDialogoAcercaDe,
+            ),
+            _buildActionSetting(
+              'Contactar Soporte',
+              '¿Necesitas ayuda? Escríbenos',
+              Icons.support_agent,
+              _contactarSoporte,
+            ),
+          ]),
+
+          // AVANZADO
+          _buildSettingSection('🔧 AVANZADO', [
+            _buildActionSetting(
+              'Eliminar Todos los Datos',
+              'Restablecer la aplicación',
+              Icons.delete_forever,
+              _mostrarDialogoEliminarDatos,
+            ),
+          ]),
+
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              'UbicaSafe v1.0.0',
+              style: AppTextStyles.caption,
+            ),
+          ),
+          const SizedBox(height: 28),
+        ],
+      ),
+    );
+  }
+}
