@@ -8,7 +8,8 @@
     <application
         android:label="ubicasafe"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        android:usesCleartextTraffic="true">
         
         <!-- ✅ Google Play Services -->
         <meta-data

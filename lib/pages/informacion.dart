@@ -171,7 +171,12 @@ class _InformacionState extends State<Informacion> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.shield_rounded, color: Colors.cyanAccent, size: 40),
+                    Image.asset(
+                      'assets/icons/ubicasafe_shield.png',
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.contain,
+                    ),
                     const SizedBox(width: 12),
                     RichText(
                       text: const TextSpan(

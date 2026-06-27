@@ -13,6 +13,7 @@ class RiskZone {
     required this.radiusMeters,
     required this.level,
     required this.description,
+    this.reportCount = 0,
   });
 
   final String name;
@@ -20,6 +21,41 @@ class RiskZone {
   final double radiusMeters;
   final RiskLevel level;
   final String description;
+  final int reportCount;
+
+  factory RiskZone.fromJson(Map<String, dynamic> json) {
+    return RiskZone(
+      name: json['name'] as String? ?? 'Zona sin nombre',
+      position: LatLng(
+        (json['latitude'] as num?)?.toDouble() ?? defaultLatitude,
+        (json['longitude'] as num?)?.toDouble() ?? defaultLongitude,
+      ),
+      radiusMeters: (json['radius_meters'] as num?)?.toDouble() ?? 250,
+      level: parseLevel(json['risk_level'] as String?),
+      description: json['description'] as String? ?? 'Sin descripción.',
+      reportCount: (json['report_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static const defaultLatitude = -16.5034;
+  static const defaultLongitude = -68.1725;
+
+  static RiskLevel parseLevel(String? value) {
+    switch (value?.toLowerCase()) {
+      case 'high':
+      case 'alto':
+        return RiskLevel.high;
+      case 'medium':
+      case 'medio':
+      case 'moderado':
+        return RiskLevel.medium;
+      case 'low':
+      case 'bajo':
+        return RiskLevel.low;
+      default:
+        return RiskLevel.medium;
+    }
+  }
 
   String get label {
     switch (level) {
@@ -280,20 +316,24 @@ class RiskMapData {
     ),
   ];
 
-  static RiskZone nearestZone(LatLng position) {
-    return zones.reduce((best, zone) {
+  static RiskZone nearestZone(LatLng position, {List<RiskZone>? source}) {
+    final sourceZones = source == null || source.isEmpty ? zones : source;
+    return sourceZones.reduce((best, zone) {
       final bestDistance = distanceMeters(position, best.position);
       final zoneDistance = distanceMeters(position, zone.position);
       return zoneDistance < bestDistance ? zone : best;
     });
   }
 
-  static RiskZone effectiveZoneFor(LatLng position) {
-    final containingZones = zones.where(
+  static RiskZone effectiveZoneFor(LatLng position, {List<RiskZone>? source}) {
+    final sourceZones = source == null || source.isEmpty ? zones : source;
+    final containingZones = sourceZones.where(
       (zone) => distanceMeters(position, zone.position) <= zone.radiusMeters,
     );
 
-    if (containingZones.isEmpty) return nearestZone(position);
+    if (containingZones.isEmpty) {
+      return nearestZone(position, source: sourceZones);
+    }
 
     return containingZones.reduce((a, b) => a.score >= b.score ? a : b);
   }

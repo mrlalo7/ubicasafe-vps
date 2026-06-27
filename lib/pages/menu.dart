@@ -1,12 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/data/risk_zones.dart';
-import 'package:ubicasafe/pages/calificanos.dart';
 import 'package:ubicasafe/pages/chat_ia.dart';
 import 'package:ubicasafe/pages/configuracion.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
@@ -14,6 +16,7 @@ import 'package:ubicasafe/pages/mapariesgo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
 import 'package:ubicasafe/pages/ubicaciontiemporeal.dart';
+import 'package:ubicasafe/services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -25,7 +28,9 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   LatLng _currentPosition = RiskMapData.defaultCenter;
+  List<RiskZone> _zones = RiskMapData.zones;
   bool _usingDeviceLocation = false;
+  bool _usingBackendZones = false;
   GoogleMapController? _mapController;
 
   static const _mapStyle = '''
@@ -40,13 +45,24 @@ class _MenuScreenState extends State<MenuScreen> {
   ]
   ''';
 
-  RiskZone get _activeZone => RiskMapData.effectiveZoneFor(_currentPosition);
+  RiskZone get _activeZone =>
+      RiskMapData.effectiveZoneFor(_currentPosition, source: _zones);
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    _loadZones();
     _loadLocation();
+  }
+
+  Future<void> _loadZones() async {
+    final zones = await ApiService().getRiskZones();
+    if (!mounted || zones.isEmpty) return;
+    setState(() {
+      _zones = zones;
+      _usingBackendZones = true;
+    });
   }
 
   Future<void> _loadLocation() async {
@@ -102,7 +118,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     children: [
                       _Header(onNotifications: _showAlerts),
                       const SizedBox(height: 28),
-                      _Greeting(zone: zone),
+                      _Greeting(position: _currentPosition),
                       const SizedBox(height: 18),
                       _SecurityStatus(
                         zone: zone,
@@ -111,10 +127,12 @@ class _MenuScreenState extends State<MenuScreen> {
                       const SizedBox(height: 16),
                       _MapPreview(
                         currentPosition: _currentPosition,
+                        zones: _zones,
                         onMapCreated: (controller) {
                           _mapController = controller;
                         },
                         mapStyle: _mapStyle,
+                        usingBackendZones: _usingBackendZones,
                         onOpen: () => _open(const MapaRiesgo()),
                       ),
                       const SizedBox(height: 18),
@@ -124,7 +142,7 @@ class _MenuScreenState extends State<MenuScreen> {
                         onReport: () => _open(const ReportarRobo()),
                       ),
                       const SizedBox(height: 18),
-                      _Recommendation(zone: zone),
+                      _RecommendationCarousel(zone: zone),
                     ],
                   ),
                 ),
@@ -138,10 +156,163 @@ class _MenuScreenState extends State<MenuScreen> {
                   onProfile: () => _open(const MiPerfilScreen()),
                   onAi: () => _open(const ChatIaScreen()),
                   onSettings: () => _open(const ConfiguracionScreen()),
-                  onRate: () => _open(const CalificanosScreen()),
+                  onSos: _showEmergencyDialog,
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEmergencyDialog() {
+    HapticFeedback.vibrate();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F1E36),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(top: BorderSide(color: AppColors.glassBorder)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.emergency_rounded,
+                    color: AppColors.accentRed,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'CENTRO DE EMERGENCIA',
+                    style: AppTextStyles.headline3.copyWith(
+                      color: AppColors.accentRed,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Presiona un número para realizar una llamada de auxilio de inmediato.',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              _buildEmergencyItem(
+                context,
+                name: 'Policía Nacional',
+                number: '110',
+                icon: Icons.local_police_rounded,
+                color: Colors.blueAccent,
+              ),
+              _buildEmergencyItem(
+                context,
+                name: 'Bomberos',
+                number: '119',
+                icon: Icons.local_fire_department_rounded,
+                color: AppColors.accentRed,
+              ),
+              _buildEmergencyItem(
+                context,
+                name: 'Emergencias Médicas',
+                number: '165',
+                icon: Icons.medical_services_rounded,
+                color: AppColors.safeGreen,
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmergencyItem(
+    BuildContext context, {
+    required String name,
+    required String number,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: AppColors.glassWhite,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            Navigator.pop(context);
+            final Uri telUri = Uri(scheme: 'tel', path: number);
+            if (await canLaunchUrl(telUri)) {
+              await launchUrl(telUri, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: AppTextStyles.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Marcar $number',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textHint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.call_rounded,
+                  color: AppColors.safeGreen,
+                  size: 20,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -184,7 +355,7 @@ class _Header extends StatelessWidget {
                     TextSpan(
                       text: 'Safe',
                       style: AppTextStyles.headline1.copyWith(
-                        color: AppColors.warningAmber,
+                        color: Colors.cyanAccent,
                       ),
                     ),
                   ],
@@ -238,53 +409,122 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.zone});
+class _Greeting extends StatefulWidget {
+  const _Greeting({required this.position});
 
-  final RiskZone zone;
+  final LatLng position;
+
+  @override
+  State<_Greeting> createState() => _GreetingState();
+}
+
+class _GreetingState extends State<_Greeting> {
+  String _temperature = '8°C';
+  IconData _weatherIcon = Icons.wb_cloudy_rounded;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWeather();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Greeting oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.position != widget.position) {
+      _fetchWeather();
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    try {
+      final lat = widget.position.latitude;
+      final lng = widget.position.longitude;
+      final url = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code',
+      );
+
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final current = data['current'];
+        final temp = current['temperature_2m'];
+        final code = current['weather_code'] as int;
+
+        if (mounted) {
+          setState(() {
+            _temperature = '${temp.toStringAsFixed(0)}°C';
+            _weatherIcon = _mapWeatherCodeToIcon(code);
+          });
+        }
+      }
+    } catch (_) {
+      // Ignorar errores, mantiene el valor por defecto
+    }
+  }
+
+  IconData _mapWeatherCodeToIcon(int code) {
+    if (code == 0) return Icons.wb_sunny_rounded;
+    if (code >= 1 && code <= 3) return Icons.cloud_queue_rounded;
+    if (code == 45 || code == 48) return Icons.foggy;
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+      return Icons.umbrella_rounded;
+    }
+    if (code >= 71 && code <= 77) return Icons.ac_unit_rounded;
+    if (code >= 95) return Icons.thunderstorm_rounded;
+    return Icons.wb_cloudy_rounded;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('¡Hola, Juan!', style: AppTextStyles.headline1),
-              const SizedBox(height: 6),
+              Text(
+                '¡Hola, Juan!',
+                style: AppTextStyles.headline2.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
               Text(
                 'Tu seguridad es nuestra prioridad.',
-                style: AppTextStyles.body.copyWith(
+                style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.textSecondary,
                 ),
               ),
             ],
           ),
         ),
+        const SizedBox(width: 12),
         GlassCard(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          borderRadius: BorderRadius.circular(16),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          borderRadius: BorderRadius.circular(12),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.wb_cloudy_rounded,
-                color: Colors.white,
-                size: 30,
-              ),
-              const SizedBox(width: 8),
+              Icon(_weatherIcon, color: Colors.white, size: 24),
+              const SizedBox(width: 6),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '8°C',
-                    style: AppTextStyles.body.copyWith(
+                    _temperature,
+                    style: AppTextStyles.bodySmall.copyWith(
                       fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
                     ),
                   ),
-                  Text('El Alto', style: AppTextStyles.caption),
+                  Text(
+                    'El Alto',
+                    style: AppTextStyles.caption.copyWith(fontSize: 9),
+                  ),
                 ],
               ),
             ],
@@ -313,49 +553,54 @@ class _SecurityStatus extends StatelessWidget {
     };
 
     return GlassCard(
-      padding: const EdgeInsets.all(18),
-      borderRadius: BorderRadius.circular(22),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      borderRadius: BorderRadius.circular(18),
       child: Row(
         children: [
           _ShieldStatus(color: zone.color),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'Estado de seguridad actual',
-                  style: AppTextStyles.bodySmall,
+                  style: AppTextStyles.caption.copyWith(fontSize: 10),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   title,
-                  style: AppTextStyles.headline2.copyWith(color: zone.color),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Riesgo ${zone.label.toLowerCase()} en ${zone.name}',
-                  style: AppTextStyles.body.copyWith(
-                    fontWeight: FontWeight.w700,
+                  style: AppTextStyles.headline3.copyWith(
+                    color: zone.color,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
+                Text(
+                  'Riesgo ${zone.label.toLowerCase()} en ${zone.name}',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     Icon(
                       usingDeviceLocation
                           ? Icons.my_location_rounded
                           : Icons.place_rounded,
-                      size: 16,
+                      size: 13,
                       color: AppColors.textSecondary,
                     ),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         usingDeviceLocation
-                            ? 'Calculado con tu ubicación real'
-                            : 'Referencia del mapa de El Alto',
-                        style: AppTextStyles.caption,
+                            ? 'Ubicación real'
+                            : 'Referencia del mapa',
+                        style: AppTextStyles.caption.copyWith(fontSize: 9),
                       ),
                     ),
                   ],
@@ -363,6 +608,7 @@ class _SecurityStatus extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 8),
           _RiskGauge(score: zone.score, color: zone.color, label: zone.label),
         ],
       ),
@@ -373,18 +619,22 @@ class _SecurityStatus extends StatelessWidget {
 class _MapPreview extends StatelessWidget {
   const _MapPreview({
     required this.currentPosition,
+    required this.zones,
     required this.onMapCreated,
     required this.mapStyle,
+    required this.usingBackendZones,
     required this.onOpen,
   });
 
   final LatLng currentPosition;
+  final List<RiskZone> zones;
   final ValueChanged<GoogleMapController> onMapCreated;
   final String mapStyle;
+  final bool usingBackendZones;
   final VoidCallback onOpen;
 
   Set<Circle> get _circles {
-    return RiskMapData.zones.map((zone) {
+    return zones.map((zone) {
       return Circle(
         circleId: CircleId(zone.name),
         center: zone.position,
@@ -454,6 +704,29 @@ class _MapPreview extends StatelessWidget {
                 children: [
                   const Expanded(child: _Legend()),
                   const SizedBox(width: 10),
+                  if (usingBackendZones) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.safeGreen.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.safeGreen.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: Text(
+                        'VPS',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.safeGreen,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   ElevatedButton.icon(
                     onPressed: onOpen,
                     icon: const Icon(Icons.open_in_full_rounded, size: 18),
@@ -527,42 +800,176 @@ class _FeatureCards extends StatelessWidget {
   }
 }
 
-class _Recommendation extends StatelessWidget {
-  const _Recommendation({required this.zone});
-
+class _RecommendationCarousel extends StatefulWidget {
+  const _RecommendationCarousel({required this.zone});
   final RiskZone zone;
+
+  @override
+  State<_RecommendationCarousel> createState() =>
+      _RecommendationCarouselState();
+}
+
+class _RecommendationCarouselState extends State<_RecommendationCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+  Timer? _timer;
+
+  final List<Map<String, String>> _recommendations = [
+    {
+      'title': 'Recomendación del día',
+      'text':
+          'Evita transitar por zonas con poca iluminación durante la noche, planificando rutas concurridas.',
+      'image': 'assets/img/rec_iluminacion.png',
+    },
+    {
+      'title': 'Consejo de transporte',
+      'text':
+          'Guarda tu celular al estar cerca de las ventanas del auto o minibús. Evita robos al paso.',
+      'image': 'assets/img/rec_celular.png',
+    },
+    {
+      'title': 'Lugares concurridos',
+      'text':
+          'Mantén tu mochila al frente en zonas concurridas (ej. La Ceja) para evitar robos por distracción.',
+      'image': 'assets/img/rec_mochila.png',
+    },
+    {
+      'title': 'Perfil seguro',
+      'text':
+          'Evita mostrar objetos de valor como cadenas o audífonos llamativos en la vía pública.',
+      'image': 'assets/img/rec_valor.png',
+    },
+    {
+      'title': 'Compartir ruta',
+      'text':
+          'Comparte tu ubicación en tiempo real con familiares o contactos de confianza cuando viajes de noche.',
+      'image': 'assets/img/rec_ubicacion.png',
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_pageController.hasClients) {
+        final nextPage = (_currentPage + 1) % _recommendations.length;
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GlassCard(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(22),
-      child: Row(
-        children: [
-          Icon(Icons.warning_amber_rounded, color: zone.color, size: 46),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Recomendación del día',
-                  style: AppTextStyles.body.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w800,
+      child: SizedBox(
+        height: 126,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              onPageChanged: (page) {
+                setState(() {
+                  _currentPage = page;
+                });
+              },
+              itemCount: _recommendations.length,
+              itemBuilder: (context, index) {
+                final rec = _recommendations[index];
+                return Row(
+                  children: [
+                    const SizedBox(width: 14),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: index == 0 ? widget.zone.color : Colors.cyanAccent,
+                      size: 38,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              rec['title']!,
+                              style: AppTextStyles.body.copyWith(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: Text(
+                                  rec['text']!,
+                                  style: AppTextStyles.body.copyWith(
+                                    fontSize: 12,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(22),
+                        bottomRight: Radius.circular(22),
+                      ),
+                      child: Image.asset(
+                        rec['image']!,
+                        width: 110,
+                        height: 126,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            Positioned(
+              left: 64,
+              bottom: 12,
+              child: Row(
+                children: List.generate(
+                  _recommendations.length,
+                  (index) => Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentPage == index
+                          ? Colors.cyanAccent
+                          : Colors.white.withOpacity(0.3),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 7),
-                Text(
-                  zone.level == RiskLevel.high
-                      ? 'Estás cerca de una zona de alto riesgo. Evita calles con poca iluminación y comparte tu ubicación.'
-                      : zone.description,
-                  style: AppTextStyles.body.copyWith(height: 1.32),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -574,14 +981,14 @@ class _BottomNav extends StatelessWidget {
     required this.onProfile,
     required this.onAi,
     required this.onSettings,
-    required this.onRate,
+    required this.onSos,
   });
 
   final VoidCallback onHome;
   final VoidCallback onProfile;
   final VoidCallback onAi;
   final VoidCallback onSettings;
-  final VoidCallback onRate;
+  final VoidCallback onSos;
 
   @override
   Widget build(BuildContext context) {
@@ -614,9 +1021,10 @@ class _BottomNav extends StatelessWidget {
             onTap: onSettings,
           ),
           _NavItem(
-            icon: Icons.star_rounded,
-            label: 'Califícanos',
-            onTap: onRate,
+            icon: Icons.emergency_rounded,
+            label: 'S.O.S.',
+            iconColor: AppColors.accentRed,
+            onTap: onSos,
           ),
         ],
       ),
@@ -632,19 +1040,19 @@ class _ShieldStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 88,
-      height: 88,
+      width: 46,
+      height: 46,
       child: Stack(
         alignment: Alignment.center,
         children: [
           CircularProgressIndicator(
             value: 0.76,
-            strokeWidth: 5,
+            strokeWidth: 3,
             valueColor: AlwaysStoppedAnimation<Color>(color),
             backgroundColor: color.withValues(alpha: 0.16),
           ),
-          Icon(Icons.shield_rounded, color: color, size: 56),
-          const Icon(Icons.check_rounded, color: AppColors.bgDark, size: 30),
+          Icon(Icons.shield_rounded, color: color, size: 28),
+          const Icon(Icons.check_rounded, color: AppColors.bgDark, size: 16),
         ],
       ),
     );
@@ -665,21 +1073,29 @@ class _RiskGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 92,
+      width: 74,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 88,
-            height: 62,
+            width: 70,
+            height: 46,
             child: CustomPaint(painter: _GaugePainter(score: score)),
           ),
-          Text('Nivel de riesgo', style: AppTextStyles.caption),
+          const SizedBox(height: 2),
+          Text(
+            'Nivel de riesgo',
+            style: AppTextStyles.caption.copyWith(fontSize: 9),
+            textAlign: TextAlign.center,
+          ),
           Text(
             label.toUpperCase(),
-            style: AppTextStyles.body.copyWith(
+            style: AppTextStyles.bodySmall.copyWith(
               color: color,
               fontWeight: FontWeight.w900,
+              fontSize: 12,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -694,44 +1110,105 @@ class _GaugePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(5, 10, size.width - 10, size.height * 1.35);
+    final strokeWidth = size.width * 0.12;
+
+    // Calculate radius to fit perfectly in size.width as a circle
+    final radius = (size.width - strokeWidth - 4) / 2;
+
+    // Center at the bottom, leaving a small 2px padding at the bottom of the box
+    final center = Offset(size.width / 2, size.height - 2);
+
+    // Create a perfect square rect centered at `center`
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 11
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt; // Clean flat caps for inner connections
+
     final colors = [
-      AppColors.safeGreen,
-      AppColors.warningAmber,
-      const Color(0xFFFF8A00),
-      AppColors.dangerRed,
+      const Color(0xFF2ECC71), // Verde bajo
+      const Color(0xFF9BD85A), // Verde claro
+      const Color(0xFFF1C40F), // Amarillo medio
+      const Color(0xFFE67E22), // Naranja alto
+      const Color(0xFFE74C3C), // Rojo crítico
     ];
 
-    for (var i = 0; i < colors.length; i++) {
+    final segmentAngle = math.pi / 5;
+
+    for (var i = 0; i < 5; i++) {
       paint.color = colors[i];
+      final start = math.pi + i * segmentAngle;
       canvas.drawArc(
         rect,
-        math.pi + i * math.pi / 4,
-        math.pi / 4,
+        start,
+        segmentAngle + 0.015, // Overlap to prevent hairline gaps
         false,
         paint,
       );
     }
 
-    final center = Offset(size.width / 2, rect.center.dy + 18);
+    // Draw rounded cap at the start (green)
+    final capPaint = Paint()..style = PaintingStyle.fill;
+    capPaint.color = colors[0];
+    canvas.drawCircle(
+      Offset(center.dx - radius, center.dy),
+      strokeWidth / 2,
+      capPaint,
+    );
+
+    // Draw rounded cap at the end (red)
+    capPaint.color = colors[4];
+    canvas.drawCircle(
+      Offset(center.dx + radius, center.dy),
+      strokeWidth / 2,
+      capPaint,
+    );
+
+    // Draw premium tapered pointer needle
+    final baseRadius = size.width * 0.10;
+    // Needle tip points to the middle-outer edge of the colored arc
+    final needleLength = radius + strokeWidth * 0.2;
     final angle = math.pi + (math.pi * score.clamp(0, 1));
-    final end = Offset(
-      center.dx + math.cos(angle) * 42,
-      center.dy + math.sin(angle) * 42,
+
+    final perpAngle1 = angle - math.pi / 2;
+    final perpAngle2 = angle + math.pi / 2;
+
+    final p1 = Offset(
+      center.dx + math.cos(perpAngle1) * (baseRadius * 0.7),
+      center.dy + math.sin(perpAngle1) * (baseRadius * 0.7),
     );
-    canvas.drawLine(
+    final p2 = Offset(
+      center.dx + math.cos(perpAngle2) * (baseRadius * 0.7),
+      center.dy + math.sin(perpAngle2) * (baseRadius * 0.7),
+    );
+    final tip = Offset(
+      center.dx + math.cos(angle) * needleLength,
+      center.dy + math.sin(angle) * needleLength,
+    );
+
+    final needlePath = Path()
+      ..moveTo(p1.dx, p1.dy)
+      ..lineTo(tip.dx, tip.dy)
+      ..lineTo(p2.dx, p2.dy)
+      ..close();
+
+    final needlePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    // Draw pointer body
+    canvas.drawPath(needlePath, needlePaint);
+
+    // Draw circular base
+    canvas.drawCircle(center, baseRadius, needlePaint);
+
+    // Draw inner dark center pin
+    canvas.drawCircle(
       center,
-      end,
-      Paint()
-        ..color = Colors.white
-        ..strokeWidth = 7
-        ..strokeCap = StrokeCap.round,
+      baseRadius * 0.4,
+      Paint()..color = const Color(0xFF080C18), // matching AppColors.bgDark
     );
-    canvas.drawCircle(center, 5, Paint()..color = Colors.white);
   }
 
   @override
@@ -866,15 +1343,20 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.active = false,
+    this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool active;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
+    final finalColor =
+        iconColor ??
+        (active ? AppColors.accentBlueLight : AppColors.textSecondary);
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -882,22 +1364,14 @@ class _NavItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: active
-                  ? AppColors.accentBlueLight
-                  : AppColors.textSecondary,
-              size: 28,
-            ),
+            Icon(icon, color: finalColor, size: 28),
             const SizedBox(height: 5),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 label,
                 style: AppTextStyles.caption.copyWith(
-                  color: active
-                      ? AppColors.accentBlueLight
-                      : AppColors.textSecondary,
+                  color: finalColor,
                   fontWeight: FontWeight.w800,
                 ),
               ),

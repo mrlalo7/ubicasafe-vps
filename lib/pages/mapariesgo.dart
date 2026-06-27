@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ubicasafe/core/app_theme.dart';
+import 'package:ubicasafe/data/risk_zones.dart';
 import 'package:ubicasafe/pages/nivelesriesgo.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
+import 'package:ubicasafe/services/api_service.dart';
 
 class MapaRiesgo extends StatefulWidget {
   const MapaRiesgo({super.key});
@@ -148,211 +150,27 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
     const LatLng(-16.4500, -68.1200),
   ];
 
-  // ZONAS DE RIESGO
-  final List<Map<String, dynamic>> _zonasRiesgo = [
-    {
-      'nombre': 'UPEA - Universidad Pública de El Alto',
-      'lat': -16.491033,
-      'lng': -68.193479,
-      'radio': 400,
-      'riesgo': 'alto',
-      'descripcion': 'Sede principal de la UPEA. Múltiples reportes de robos en los alrededores.',
-    },
-    {
-      'nombre': 'Puente Vela',
-      'lat': -16.5975,
-      'lng': -68.1842,
-      'radio': 250,
-      'riesgo': 'alto',
-      'descripcion': 'Peligroso a partir de las 8:00 pm en adelante.',
-    },
-    {
-      'nombre': 'Zona 12 de Octubre',
-      'lat': -16.5118,
-      'lng': -68.1632,
-      'radio': 149,
-      'riesgo': 'alto',
-      'descripcion': 'Zona peligrosa por múltiples reportes a partir de las 8:00 pm.',
-    },
-    {
-      'nombre': 'La Ceja de El Alto',
-      'lat': -16.5034,
-      'lng': -68.1625,
-      'radio': 180,
-      'riesgo': 'alto',
-      'descripcion': 'Zona comercial principal. ALTO RIESGO en el Pasaje Artesanal y áreas aledañas.',
-    },
-    {
-      'nombre': 'Feria 16 de Julio',
-      'lat': -16.4942,
-      'lng': -68.1736,
-      'radio': 450,
-      'riesgo': 'alto',
-      'descripcion': 'Alta incidencia de robos por distracción en aglomeraciones.',
-    },
-    {
-      'nombre': 'Terminal Metropolitana',
-      'lat': -16.52073,
-      'lng': -68.17723,
-      'radio': 380,
-      'riesgo': 'alto',
-      'descripcion': 'Terminal con alta afluencia. Reportes frecuentes de asaltos.',
-    },
-    {
-      'nombre': 'Senkata',
-      'lat': -16.5702,
-      'lng': -68.1862,
-      'radio': 380,
-      'riesgo': 'alto',
-      'descripcion': 'Lugar alejado. Reportes frecuentes de robos.',
-    },
-    {
-      'nombre': 'Terminal de Buses Río Seco',
-      'lat': -16.4878,
-      'lng': -68.2002,
-      'radio': 350,
-      'riesgo': 'alto',
-      'descripcion': 'Zona de terminal con alta incidencia delictiva.',
-    },
-    {
-      'nombre': 'Avenida 6 de Marzo',
-      'lat': -16.5059,
-      'lng': -68.1631,
-      'radio': 100,
-      'riesgo': 'alto',
-      'descripcion': 'Múltiples reportes de robos al paso.',
-    },
-    // RIESGO MEDIO
-    {
-      'nombre': 'Mercado Satélite',
-      'lat': -16.5247,
-      'lng': -68.1506,
-      'radio': 280,
-      'riesgo': 'medio',
-      'descripcion': 'Robos ocasionales por distracción.',
-    },
-    {
-      'nombre': 'Plaza La Paz',
-      'lat': -16.4919,
-      'lng': -68.1832,
-      'radio': 250,
-      'riesgo': 'medio',
-      'descripcion': 'Incidentes esporádicos en horarios de menor tránsito.',
-    },
-    {
-      'nombre': 'Estacion Teleferico Azul',
-      'lat': -16.4893,
-      'lng': -68.1931,
-      'radio': 250,
-      'riesgo': 'medio',
-      'descripcion': 'Zona transitada, precauciones en la noche.',
-    },
-    {
-      'nombre': 'Universidad Franz Tamayo (UNIFRANZ)',
-      'lat': -16.5085,
-      'lng': -68.1663,
-      'radio': 200,
-      'riesgo': 'medio',
-      'descripcion': 'Concurrencia universitaria.',
-    },
-    {
-      'nombre': 'Universidad Técnica Privada Cosmos',
-      'lat': -16.5245,
-      'lng': -68.2131,
-      'radio': 200,
-      'riesgo': 'medio',
-      'descripcion': 'Concurrencia universitaria.',
-    },
-    {
-      'nombre': 'Universidad Salesiana de Bolivia (USB)',
-      'lat': -16.4770,
-      'lng': -68.1487,
-      'radio': 200,
-      'riesgo': 'medio',
-      'descripcion': 'Concurrencia universitaria.',
-    },
-    {
-      'nombre': 'Ballivian',
-      'lat': -16.4893,
-      'lng': -68.1805,
-      'radio': 250,
-      'riesgo': 'medio',
-      'descripcion': 'Zona transitada.',
-    },
-    {
-      'nombre': 'Estadio Municipal de El Alto',
-      'lat': -16.4713,
-      'lng': -68.2018,
-      'radio': 250,
-      'riesgo': 'medio',
-      'descripcion': 'Zona transitada, precauciones los días de partido.',
-    },
-    {
-      'nombre': 'Cementerio General Mercedario',
-      'lat': -16.5292,
-      'lng': -68.2481,
-      'radio': 250,
-      'riesgo': 'medio',
-      'descripcion': 'Zona transitada, evitar la noche.',
-    },
-    {
-      'nombre': 'Achocalla',
-      'lat': -16.4500,
-      'lng': -68.1200,
-      'radio': 300,
-      'riesgo': 'medio',
-      'descripcion': 'Área periurbana con riesgo medio.',
-    },
-    // BAJO RIESGO
-    {
-      'nombre': 'Alto Lima',
-      'lat': -16.4765,
-      'lng': -68.1751,
-      'radio': 350,
-      'riesgo': 'bajo',
-      'descripcion': 'Urbanización. Seguridad y baja incidencia.',
-    },
-    {
-      'nombre': 'Villa Ingenio',
-      'lat': -16.4750,
-      'lng': -68.2000,
-      'radio': 400,
-      'riesgo': 'bajo',
-      'descripcion': 'Zona residencial tranquila.',
-    },
-    {
-      'nombre': 'Rio seco',
-      'lat': -16.4868,
-      'lng': -68.2086,
-      'radio': 380,
-      'riesgo': 'bajo',
-      'descripcion': 'Zona residencial organizada. Vigilancia vecinal.',
-    },
-    {
-      'nombre': 'Ciudad Satélite',
-      'lat': -16.5282,
-      'lng': -68.1542,
-      'radio': 380,
-      'riesgo': 'bajo',
-      'descripcion': 'Zona residencial organizada. Vigilancia vecinal.',
-    },
-    {
-      'nombre': 'Estacion Linea Morada',
-      'lat': -16.5221,
-      'lng': -68.1694,
-      'radio': 380,
-      'riesgo': 'bajo',
-      'descripcion': 'Zona transitada pero con vigilancia.',
-    },
-  ];
+  List<RiskZone> _zonasRiesgo = RiskMapData.zones;
+  bool _usingBackendZones = false;
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _cargarZonasRiesgo();
+    _cargarZonasDesdeBackend();
     _cargarPoligonoElAlto();
     _getCurrentLocation();
+  }
+
+  Future<void> _cargarZonasDesdeBackend() async {
+    final zones = await ApiService().getRiskZones();
+    if (!mounted || zones.isEmpty) return;
+    setState(() {
+      _zonasRiesgo = zones;
+      _usingBackendZones = true;
+    });
+    _cargarZonasRiesgo();
   }
 
   void _getCurrentLocation() async {
@@ -373,7 +191,9 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _mostrarErrorUbicacion('Los permisos de ubicación están permanentemente denegados');
+        _mostrarErrorUbicacion(
+          'Los permisos de ubicación están permanentemente denegados',
+        );
         return;
       }
 
@@ -400,8 +220,13 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
       _markers.add(
         Marker(
           markerId: const MarkerId('mi_ubicacion'),
-          position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          position: LatLng(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueAzure,
+          ),
           infoWindow: const InfoWindow(
             title: 'Mi Ubicación Actual',
             snippet: 'Estás aquí',
@@ -418,10 +243,17 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.error_outline, color: AppColors.accentRed, size: 20),
+            const Icon(
+              Icons.error_outline,
+              color: AppColors.accentRed,
+              size: 20,
+            ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(mensaje, style: AppTextStyles.bodySmall.copyWith(color: Colors.white)),
+              child: Text(
+                mensaje,
+                style: AppTextStyles.bodySmall.copyWith(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -436,16 +268,14 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
   void _cargarZonasRiesgo() {
     _circulosRiesgo.clear();
 
-    for (var zona in _zonasRiesgo) {
-      final Color color = _obtenerColorRiesgo(zona['riesgo']);
-
+    for (final zona in _zonasRiesgo) {
       _circulosRiesgo.add(
         Circle(
-          circleId: CircleId(zona['nombre']),
-          center: LatLng(zona['lat'], zona['lng']),
-          radius: zona['radio'].toDouble(),
-          fillColor: color.withOpacity(0.25),
-          strokeColor: color.withOpacity(0.8),
+          circleId: CircleId(zona.name),
+          center: zona.position,
+          radius: zona.radiusMeters,
+          fillColor: zona.color.withOpacity(0.25),
+          strokeColor: zona.color.withOpacity(0.8),
           strokeWidth: 2,
         ),
       );
@@ -478,22 +308,9 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
     );
   }
 
-  Color _obtenerColorRiesgo(String riesgo) {
-    switch (riesgo) {
-      case 'alto':
-        return AppColors.dangerRed;
-      case 'medio':
-        return AppColors.warningAmber;
-      case 'bajo':
-        return AppColors.safeGreen;
-      default:
-        return AppColors.textHint;
-    }
-  }
-
   void _mostrarInfoZona(String nombreZona) {
-    final zona = _zonasRiesgo.firstWhere((z) => z['nombre'] == nombreZona);
-    final color = _obtenerColorRiesgo(zona['riesgo']);
+    final zona = _zonasRiesgo.firstWhere((z) => z.name == nombreZona);
+    final color = zona.color;
 
     showModalBottomSheet(
       context: context,
@@ -536,10 +353,13 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(zona['nombre'], style: AppTextStyles.headline3),
+                      Text(zona.name, style: AppTextStyles.headline3),
                       Text(
-                        'Riesgo: ${zona['riesgo'].toString().toUpperCase()}',
-                        style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.bold),
+                        'Riesgo: ${zona.label.toUpperCase()}',
+                        style: AppTextStyles.caption.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -547,13 +367,20 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
               ],
             ),
             const SizedBox(height: 24),
-            Text(zona['descripcion'], style: AppTextStyles.body),
+            Text(zona.description, style: AppTextStyles.body),
             const SizedBox(height: 24),
             Row(
               children: [
-                const Icon(Icons.radar_rounded, color: AppColors.textHint, size: 16),
+                const Icon(
+                  Icons.radar_rounded,
+                  color: AppColors.textHint,
+                  size: 16,
+                ),
                 const SizedBox(width: 8),
-                Text('Radio: ${zona['radio']}m', style: AppTextStyles.caption),
+                Text(
+                  'Radio: ${zona.radiusMeters.toStringAsFixed(0)}m',
+                  style: AppTextStyles.caption,
+                ),
               ],
             ),
             const SizedBox(height: 32),
@@ -589,11 +416,17 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
               border: Border.all(color: AppColors.glassBorder),
             ),
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 18),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: AppColors.textPrimary,
+                size: 18,
+              ),
               onPressed: () {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const MapaPredictivo()),
+                  MaterialPageRoute(
+                    builder: (context) => const MapaPredictivo(),
+                  ),
                   (route) => false,
                 );
               },
@@ -607,7 +440,10 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.glassBorder),
           ),
-          child: Text('Mapa de Riesgo', style: AppTextStyles.headline3.copyWith(fontSize: 16)),
+          child: Text(
+            'Mapa de Riesgo',
+            style: AppTextStyles.headline3.copyWith(fontSize: 16),
+          ),
         ),
         centerTitle: true,
       ),
@@ -633,16 +469,16 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
             onTap: (LatLng position) {
-              for (var zona in _zonasRiesgo) {
+              for (final zona in _zonasRiesgo) {
                 final distancia = _calcularDistancia(
                   position.latitude,
                   position.longitude,
-                  zona['lat'],
-                  zona['lng'],
+                  zona.position.latitude,
+                  zona.position.longitude,
                 );
 
-                if (distancia <= zona['radio']) {
-                  _mostrarInfoZona(zona['nombre']);
+                if (distancia <= zona.radiusMeters) {
+                  _mostrarInfoZona(zona.name);
                   break;
                 }
               }
@@ -657,7 +493,9 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const NivelesRiesgoScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const NivelesRiesgoScreen(),
+                  ),
                 );
               },
               child: ClipRRect(
@@ -676,8 +514,17 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Leyenda', style: AppTextStyles.label.copyWith(color: AppColors.textPrimary)),
-                          const Icon(Icons.info_outline, color: AppColors.textHint, size: 14),
+                          Text(
+                            'Leyenda',
+                            style: AppTextStyles.label.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const Icon(
+                            Icons.info_outline,
+                            color: AppColors.textHint,
+                            size: 14,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -694,7 +541,10 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
                             height: 14,
                             decoration: BoxDecoration(
                               color: AppColors.accentBlue.withOpacity(0.2),
-                              border: Border.all(color: AppColors.accentBlue, width: 1),
+                              border: Border.all(
+                                color: AppColors.accentBlue,
+                                width: 1,
+                              ),
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
@@ -708,13 +558,51 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
               ),
             ),
           ),
+          Positioned(
+            top: 100,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: AppColors.bgCard.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.glassBorder),
+                boxShadow: AppShadows.card,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _usingBackendZones
+                        ? Icons.cloud_done_rounded
+                        : Icons.offline_bolt_rounded,
+                    color: _usingBackendZones
+                        ? AppColors.safeGreen
+                        : AppColors.warningAmber,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _usingBackendZones ? 'VPS' : 'Offline',
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: AppShadows.blueGlow),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: AppShadows.blueGlow,
+            ),
             child: FloatingActionButton(
               onPressed: () {
                 _mapController?.animateCamera(
@@ -725,18 +613,27 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
               heroTag: "btn_centro",
               mini: true,
               elevation: 0,
-              child: const Icon(Icons.center_focus_strong_rounded, color: Colors.white),
+              child: const Icon(
+                Icons.center_focus_strong_rounded,
+                color: Colors.white,
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: AppShadows.card),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: AppShadows.card,
+            ),
             child: FloatingActionButton(
               onPressed: _getCurrentLocation,
               backgroundColor: AppColors.bgSurface,
               heroTag: "btn_ubicacion",
               elevation: 0,
-              child: const Icon(Icons.my_location_rounded, color: AppColors.accentBlue),
+              child: const Icon(
+                Icons.my_location_rounded,
+                color: AppColors.accentBlue,
+              ),
             ),
           ),
         ],
@@ -767,7 +664,12 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
     );
   }
 
-  double _calcularDistancia(double lat1, double lng1, double lat2, double lng2) {
+  double _calcularDistancia(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
     return Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
   }
 }

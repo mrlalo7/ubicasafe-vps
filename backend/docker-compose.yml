@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL with pgvector extension ──────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ubicasafe_db
+      POSTGRES_USER: ubicasafe_user
+      # TODO(security): Use Docker secrets or env file for production passwords
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+    ports:
+      # Only exposed to localhost for security
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./app/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ubicasafe_user -d ubicasafe_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI RAG Backend ─────────────────────────────────────────
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ubicasafe_user:${DB_PASSWORD:-change_me_in_production}@db:5432/ubicasafe_db
+    ports:
+      # Exposed for direct mobile app testing. Use Nginx + HTTPS in production.
+      - "0.0.0.0:8000:8000"
+
+volumes:
+  pgdata:

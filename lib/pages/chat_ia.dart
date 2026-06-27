@@ -12,6 +12,7 @@ import 'package:ubicasafe/pages/mapapredictivo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
 import 'package:ubicasafe/services/gemini_service.dart';
+import 'package:ubicasafe/services/live_audio_service.dart';
 
 class ChatIaScreen extends StatefulWidget {
   const ChatIaScreen({super.key});
@@ -24,19 +25,27 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _voiceController;
   final GeminiService _geminiService = GeminiService();
+  final LiveAudioService _liveAudioService = LiveAudioService();
   final SpeechToText _speech = SpeechToText();
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _textController = TextEditingController();
   final List<String> _conversation = [];
   Timer? _timer;
+  Timer? _restartListenTimer;
+  StreamSubscription<LiveAudioState>? _liveStateSubscription;
+  StreamSubscription<String>? _liveMessageSubscription;
   Duration _elapsed = Duration.zero;
   bool _keyboardOpen = false;
   bool _thinking = false;
   bool _speaking = true;
   bool _listening = false;
   bool _speechAvailable = false;
+  bool _autoListen = true;
+  bool _ttsReady = false;
+  String _localeId = 'es_BO';
   String _lastSubmittedSpeech = '';
-  String _assistantStatus = 'IA+ está escuchando...';
+  bool _micMuted = false;
+  String _assistantStatus = 'Wara está escuchando...';
   String _assistantReply =
       'Estoy lista para ayudarte con reportes, zonas de riesgo o consejos de seguridad.';
 
@@ -51,17 +60,68 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _elapsed += const Duration(seconds: 1));
     });
-    _initVoice();
+    _initLiveAudio();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _liveAudioService.start();
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _restartListenTimer?.cancel();
+    _liveStateSubscription?.cancel();
+    _liveMessageSubscription?.cancel();
+    _liveAudioService.dispose();
     _voiceController.dispose();
     _speech.stop();
     _tts.stop();
     _textController.dispose();
     super.dispose();
+  }
+
+  void _initLiveAudio() {
+    _liveStateSubscription = _liveAudioService.states.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        switch (state) {
+          case LiveAudioState.connecting:
+            _thinking = true;
+            _listening = false;
+            _speaking = true;
+            _assistantStatus = 'Conectando a Wara...';
+            break;
+          case LiveAudioState.listening:
+            _thinking = false;
+            _listening = true;
+            _speaking = true;
+            _assistantStatus = _micMuted ? 'Micrófono silenciado' : 'Wara está escuchando...';
+            break;
+          case LiveAudioState.speaking:
+            _thinking = false;
+            _listening = false;
+            _speaking = true;
+            _assistantStatus = 'Wara está hablando...';
+            break;
+          case LiveAudioState.error:
+            _thinking = false;
+            _listening = false;
+            _speaking = false;
+            _assistantStatus = 'Live API no disponible';
+            break;
+          case LiveAudioState.idle:
+            _thinking = false;
+            _listening = false;
+            _speaking = false;
+            _assistantStatus = 'Llamada detenida';
+            break;
+        }
+      });
+    });
+    _liveMessageSubscription = _liveAudioService.messages.listen((message) {
+      if (!mounted) return;
+      setState(() => _assistantReply = message);
+    });
   }
 
   Future<void> _initVoice() async {
@@ -73,9 +133,14 @@ class _ChatIaScreenState extends State<ChatIaScreen>
             _listening = false;
             if (!_thinking) {
               _speaking = false;
-              _assistantStatus = 'Toca el micrófono para hablar';
+              _assistantStatus = _autoListen
+                  ? 'Esperando tu voz...'
+                  : 'Toca el micrófono para hablar';
             }
           });
+          if (_autoListen && !_thinking) {
+            _scheduleListeningRestart();
+          }
         }
       },
       onError: (error) {
@@ -89,23 +154,29 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       },
     );
 
-    await _tts.setLanguage('es-BO');
-    await _tts.setSpeechRate(0.48);
-    await _tts.setPitch(1.0);
+    await _configureNaturalVoice();
+    await _tts.awaitSpeakCompletion(true);
+    await _tts.setSpeechRate(0.43);
+    await _tts.setPitch(0.96);
     await _tts.setVolume(1.0);
     _tts.setStartHandler(() {
       if (!mounted) return;
       setState(() {
         _speaking = true;
-        _assistantStatus = 'IA+ está hablando...';
+        _assistantStatus = 'Wara está hablando...';
       });
     });
     _tts.setCompletionHandler(() {
       if (!mounted) return;
       setState(() {
         _speaking = false;
-        _assistantStatus = 'Toca el micrófono para hablar';
+        _assistantStatus = _autoListen
+            ? 'Esperando tu voz...'
+            : 'Toca el micrófono para hablar';
       });
+      if (_autoListen) {
+        _scheduleListeningRestart();
+      }
     });
     _tts.setErrorHandler((_) {
       if (!mounted) return;
@@ -114,9 +185,83 @@ class _ChatIaScreenState extends State<ChatIaScreen>
 
     if (!mounted) return;
     setState(() {
+      _speaking = false;
       _assistantStatus = _speechAvailable
-          ? 'Toca el micrófono para hablar'
+          ? 'Esperando tu voz...'
           : 'Micrófono no disponible';
+    });
+    if (_speechAvailable) {
+      _scheduleListeningRestart(delay: const Duration(milliseconds: 550));
+    }
+  }
+
+  Future<void> _configureNaturalVoice() async {
+    final locales = await _speech.locales();
+    String? preferredLocale;
+    for (final locale in locales) {
+      if (locale.localeId == 'es_BO' ||
+          locale.localeId == 'es_ES' ||
+          locale.localeId == 'es_US' ||
+          locale.localeId.startsWith('es_')) {
+        preferredLocale = locale.localeId;
+        break;
+      }
+    }
+    _localeId = preferredLocale ?? 'es_ES';
+
+    await _tts.setLanguage(_localeId.replaceAll('_', '-'));
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is List) {
+        final selected = voices.whereType<Map>().firstWhere(
+          (voice) {
+            final locale = '${voice['locale'] ?? voice['language'] ?? ''}'
+                .toLowerCase();
+            final name = '${voice['name'] ?? ''}'.toLowerCase();
+            return locale.startsWith('es') &&
+                (name.contains('neural') ||
+                    name.contains('wavenet') ||
+                    name.contains('premium') ||
+                    name.contains('female') ||
+                    name.contains('mujer'));
+          },
+          orElse: () => voices.whereType<Map>().firstWhere(
+            (voice) => '${voice['locale'] ?? voice['language'] ?? ''}'
+                .toLowerCase()
+                .startsWith('es'),
+            orElse: () => const {},
+          ),
+        );
+        if (selected.isNotEmpty) {
+          final name = selected['name']?.toString();
+          final locale = (selected['locale'] ?? selected['language'])
+              ?.toString();
+          if (name != null && locale != null) {
+            await _tts.setVoice({'name': name, 'locale': locale});
+          }
+        }
+      }
+    } catch (_) {
+      // The platform TTS voice list is optional; language/rate still improve output.
+    }
+    _ttsReady = true;
+  }
+
+  void _scheduleListeningRestart({
+    Duration delay = const Duration(milliseconds: 900),
+  }) {
+    _restartListenTimer?.cancel();
+    if (!_autoListen ||
+        _listening ||
+        _thinking ||
+        _speaking ||
+        !_speechAvailable) {
+      return;
+    }
+    _restartListenTimer = Timer(delay, () {
+      if (mounted && _autoListen && !_listening && !_thinking && !_speaking) {
+        _startListening();
+      }
     });
   }
 
@@ -125,25 +270,28 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
-  Future<void> _toggleListening() async {
+  void _toggleMute() {
     HapticFeedback.lightImpact();
+    setState(() {
+      _micMuted = !_micMuted;
+      _liveAudioService.muted = _micMuted;
+      if (_micMuted) {
+        _assistantStatus = 'Micrófono silenciado';
+      } else {
+        _assistantStatus = 'Wara está escuchando...';
+      }
+    });
+  }
 
-    if (_listening) {
-      await _speech.stop();
-      if (!mounted) return;
-      setState(() {
-        _listening = false;
-        _speaking = false;
-        _assistantStatus = 'Escucha detenida';
-      });
-      return;
-    }
+  Future<void> _startListening() async {
+    if (_listening || _thinking) return;
 
     if (!_speechAvailable) {
       await _initVoice();
       if (!_speechAvailable) return;
     }
 
+    _restartListenTimer?.cancel();
     await _tts.stop();
     _lastSubmittedSpeech = '';
     setState(() {
@@ -154,11 +302,11 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     });
 
     await _speech.listen(
-      localeId: 'es_BO',
-      listenFor: const Duration(seconds: 20),
-      pauseFor: const Duration(seconds: 3),
       listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.confirmation,
+        listenMode: ListenMode.dictation,
+        listenFor: const Duration(minutes: 2),
+        localeId: _localeId,
+        pauseFor: const Duration(seconds: 2),
         partialResults: true,
       ),
       onResult: _onSpeechResult,
@@ -185,6 +333,10 @@ class _ChatIaScreenState extends State<ChatIaScreen>
 
   void _toggleKeyboard() {
     HapticFeedback.selectionClick();
+    _autoListen = false;
+    _restartListenTimer?.cancel();
+    _speech.stop();
+    _tts.stop();
     setState(() => _keyboardOpen = !_keyboardOpen);
   }
 
@@ -193,6 +345,10 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     if (value.isEmpty) return;
 
     HapticFeedback.mediumImpact();
+    _autoListen = true;
+    _restartListenTimer?.cancel();
+    await _liveAudioService.stop();
+    await _speech.stop();
     await _tts.stop();
     setState(() {
       _conversation.add(value);
@@ -201,10 +357,10 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       _speaking = true;
       _thinking = true;
       _assistantStatus = _localStatusFor(value);
-      _assistantReply = 'Consultando IA+...';
+      _assistantReply = 'Consultando a Wara...';
     });
 
-    final reply = await _geminiService.sendSafetyMessage(
+    final reply = await _geminiService.sendRagMessage(
       message: value,
       recentMessages: _conversation.reversed.skip(1).toList(),
     );
@@ -213,7 +369,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     setState(() {
       _thinking = false;
       _speaking = true;
-      _assistantStatus = 'IA+ respondió';
+      _assistantStatus = 'Wara respondió';
       _assistantReply = reply;
     });
     await _speak(reply);
@@ -225,6 +381,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (cleanText.isEmpty) return;
+    if (!_ttsReady) {
+      await _configureNaturalVoice();
+    }
     await _tts.speak(cleanText);
   }
 
@@ -267,33 +426,30 @@ class _ChatIaScreenState extends State<ChatIaScreen>
               Positioned.fill(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 126),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 126),
                   child: Column(
                     children: [
-                      const _Header(),
-                      const SizedBox(height: 20),
                       Text(
-                        'Hablando con IA+',
-                        style: AppTextStyles.headline1.copyWith(fontSize: 28),
+                        'Hablando con Wara',
+                        style: AppTextStyles.headline2.copyWith(fontWeight: FontWeight.w800),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
-                        'Tu asistente inteligente de seguridad',
-                        style: AppTextStyles.body.copyWith(
+                        'tu asistente de seguridad',
+                        style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.textSecondary,
-                          fontSize: 16,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
-                      _TimerBadge(label: _elapsedLabel),
                       const SizedBox(height: 10),
+                      _TimerBadge(label: _elapsedLabel),
+                      const SizedBox(height: 8),
                       _VoiceOrb(
                         controller: _voiceController,
                         speaking: _speaking || _listening || _thinking,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -344,9 +500,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                       ),
                       const SizedBox(height: 18),
                       _CallControls(
-                        listening: _listening,
+                        muted: _micMuted,
                         keyboardOpen: _keyboardOpen,
-                        onMic: _toggleListening,
+                        onMic: _toggleMute,
                         onHang: () => Navigator.pop(context),
                         onKeyboard: _toggleKeyboard,
                       ),
@@ -419,81 +575,7 @@ class _ReplyPanel extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header();
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Image.asset(
-          'assets/icons/ubicasafe_shield.png',
-          width: 58,
-          height: 58,
-          fit: BoxFit.contain,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              RichText(
-                text: TextSpan(
-                  children: [
-                    TextSpan(text: 'Ubica', style: AppTextStyles.headline1),
-                    TextSpan(
-                      text: 'Safe',
-                      style: AppTextStyles.headline1.copyWith(
-                        color: AppColors.warningAmber,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.location_on,
-                    color: AppColors.textSecondary,
-                    size: 17,
-                  ),
-                  const SizedBox(width: 4),
-                  Text('El Alto, Bolivia', style: AppTextStyles.bodySmall),
-                ],
-              ),
-            ],
-          ),
-        ),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(Icons.notifications_none_rounded, size: 34),
-            Positioned(
-              right: -2,
-              top: -2,
-              child: Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: AppColors.accentRed,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '3',
-                  style: AppTextStyles.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
 
 class _TimerBadge extends StatelessWidget {
   const _TimerBadge({required this.label});
@@ -541,21 +623,21 @@ class _VoiceOrb extends StatelessWidget {
       builder: (context, _) {
         final t = controller.value;
         return SizedBox(
-          height: 260,
+          height: 190,
           child: Stack(
             alignment: Alignment.center,
             children: [
               CustomPaint(
-                size: const Size(double.infinity, 260),
+                size: const Size(double.infinity, 190),
                 painter: _WaveformPainter(progress: t, active: speaking),
               ),
               for (var i = 0; i < 5; i++)
                 Transform.scale(
                   scale:
-                      1 + (speaking ? ((t + i * 0.16) % 1) * 0.42 : i * 0.06),
+                      1 + (speaking ? ((t + i * 0.16) % 1) * 0.32 : i * 0.05),
                   child: Container(
-                    width: 170 + i * 16,
-                    height: 170 + i * 16,
+                    width: 120 + i * 12,
+                    height: 120 + i * 12,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -572,41 +654,21 @@ class _VoiceOrb extends StatelessWidget {
                   ),
                 ),
               Container(
-                width: 178,
-                height: 178,
+                width: 128,
+                height: 128,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppColors.accentBlue.withValues(alpha: 0.22),
-                      AppColors.bgDark.withValues(alpha: 0.78),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: Color.lerp(
-                      AppColors.accentBlueLight,
-                      const Color(0xFF9B7CFF),
-                      math.sin(t * math.pi),
-                    )!,
-                    width: 3,
-                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(
-                        0xFF6F57FF,
-                      ).withValues(alpha: speaking ? 0.34 : 0.16),
-                      blurRadius: speaking ? 42 : 22,
-                      spreadRadius: speaking ? 4 : 0,
+                      color: const Color(0xFF00E5FF).withValues(alpha: speaking ? 0.38 : 0.18),
+                      blurRadius: speaking ? 36 : 18,
+                      spreadRadius: speaking ? 4 : 1,
                     ),
                   ],
                 ),
-                child: Center(
-                  child: Image.asset(
-                    'assets/icons/ubicasafe_shield.png',
-                    width: 106,
-                    height: 106,
-                    fit: BoxFit.contain,
-                  ),
+                child: Image.asset(
+                  'assets/icons/ubicasafe_shield.png',
+                  fit: BoxFit.contain,
                 ),
               ),
             ],
@@ -734,14 +796,14 @@ class _QuickAction extends StatelessWidget {
 
 class _CallControls extends StatelessWidget {
   const _CallControls({
-    required this.listening,
+    required this.muted,
     required this.keyboardOpen,
     required this.onMic,
     required this.onHang,
     required this.onKeyboard,
   });
 
-  final bool listening;
+  final bool muted;
   final bool keyboardOpen;
   final VoidCallback onMic;
   final VoidCallback onHang;
@@ -753,8 +815,9 @@ class _CallControls extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _RoundControl(
-          icon: listening ? Icons.stop_rounded : Icons.mic_none_rounded,
-          label: listening ? 'Detener' : 'Escuchar',
+          icon: muted ? Icons.mic_off_rounded : Icons.mic_none_rounded,
+          label: muted ? 'Activar' : 'Silenciar',
+          iconColor: muted ? AppColors.accentRed : null,
           onTap: onMic,
         ),
         _HangButton(onTap: onHang),
@@ -773,11 +836,13 @@ class _RoundControl extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -796,7 +861,7 @@ class _RoundControl extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.glassBorder),
               ),
-              child: Icon(icon, size: 30, color: Colors.white),
+              child: Icon(icon, size: 30, color: iconColor ?? Colors.white),
             ),
           ),
         ),

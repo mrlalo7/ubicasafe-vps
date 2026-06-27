@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:ubicasafe/core/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:ubicasafe/services/api_service.dart';
 import 'dart:io';
-import 'dart:math';
 
 class ReportarRobo extends StatefulWidget {
   const ReportarRobo({super.key});
@@ -17,6 +15,7 @@ class ReportarRobo extends StatefulWidget {
 class _ReportarRoboState extends State<ReportarRobo>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService();
   final TextEditingController _descripcionController = TextEditingController();
   final TextEditingController _ubicacionController = TextEditingController();
 
@@ -28,8 +27,9 @@ class _ReportarRoboState extends State<ReportarRobo>
   bool _armas = false;
   bool _armaFuego = false;
   bool _armaBlanca = false;
-  bool _enviandoCorreo = false;
+  bool _registrandoReporte = false;
   String _contenidoReporte = '';
+  Map<String, dynamic>? _stats;
 
   String _marcaCelular = 'Samsung';
   String _modeloCelular = 'Media gama (Redmi, Moto G, A series)';
@@ -48,6 +48,7 @@ class _ReportarRoboState extends State<ReportarRobo>
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
+    _cargarEstadisticas();
   }
 
   @override
@@ -58,18 +59,39 @@ class _ReportarRoboState extends State<ReportarRobo>
     super.dispose();
   }
 
-  Color get _nivelColor {
-    switch (_nivelViolencia) {
-      case 'Bajo':
-        return AppColors.safeGreen;
-      case 'Moderado':
-        return AppColors.warningAmber;
-      case 'Alto':
-      case 'Extremo':
-        return AppColors.dangerRed;
-      default:
-        return AppColors.safeGreen;
+  String get _zonaPrincipalLabel {
+    final zone = _stats?['most_dangerous_zone'];
+    if (zone is Map<String, dynamic>) {
+      final name = zone['name'] as String?;
+      if (name != null && name.isNotEmpty && name != 'Sin datos') {
+        return name.length > 8 ? '${name.substring(0, 8)}...' : name;
+      }
     }
+    return 'Sin datos';
+  }
+
+  DateTime get _fechaHoraIncidente {
+    return DateTime(
+      _fechaIncidente.year,
+      _fechaIncidente.month,
+      _fechaIncidente.day,
+      _horaIncidente.hour,
+      _horaIncidente.minute,
+    );
+  }
+
+  String? get _tipoArma {
+    if (!_armas) return null;
+    if (_armaFuego && _armaBlanca) return 'Arma de fuego y arma blanca';
+    if (_armaFuego) return 'Arma de fuego';
+    if (_armaBlanca) return 'Arma blanca';
+    return 'Tipo no especificado';
+  }
+
+  Future<void> _cargarEstadisticas() async {
+    final stats = await _apiService.getStats();
+    if (!mounted || stats == null) return;
+    setState(() => _stats = stats);
   }
 
   @override
@@ -98,9 +120,12 @@ class _ReportarRoboState extends State<ReportarRobo>
             tooltip: 'Estadísticas',
           ),
           IconButton(
-            icon: const Icon(Icons.save_rounded, color: AppColors.accentBlueLight),
-            onPressed: _guardarReporte,
-            tooltip: 'Guardar',
+            icon: const Icon(
+              Icons.save_rounded,
+              color: AppColors.accentBlueLight,
+            ),
+            onPressed: _guardarCopiaLocal,
+            tooltip: 'Guardar copia',
           ),
         ],
       ),
@@ -126,14 +151,20 @@ class _ReportarRoboState extends State<ReportarRobo>
 
                 // ── Datos del dispositivo (condicional) ──
                 if (_tipoRobo == 'Robo de celular') ...[
-                  _buildSectionLabel('Datos del Dispositivo', Icons.smartphone_rounded),
+                  _buildSectionLabel(
+                    'Datos del Dispositivo',
+                    Icons.smartphone_rounded,
+                  ),
                   const SizedBox(height: 10),
                   _buildSeccionDatosDispositivo(),
                   const SizedBox(height: 16),
                 ],
 
                 // ── Ubicación y Fecha ──
-                _buildSectionLabel('Ubicación y Fecha', Icons.location_on_rounded),
+                _buildSectionLabel(
+                  'Ubicación y Fecha',
+                  Icons.location_on_rounded,
+                ),
                 const SizedBox(height: 10),
                 GlassCard(
                   padding: const EdgeInsets.all(20),
@@ -144,8 +175,9 @@ class _ReportarRoboState extends State<ReportarRobo>
                         label: 'Ubicación del Incidente',
                         hint: 'Ej: Av. 16 de Julio, cerca del mercado',
                         prefixIcon: Icons.pin_drop_outlined,
-                        validator: (v) =>
-                            (v == null || v.isEmpty) ? 'Campo obligatorio' : null,
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? 'Campo obligatorio'
+                            : null,
                       ),
                       const SizedBox(height: 14),
                       Row(
@@ -170,10 +202,9 @@ class _ReportarRoboState extends State<ReportarRobo>
                     label: 'Descripción del Incidente',
                     hint: 'Describa lo sucedido en detalle...',
                     maxLines: 5,
-                    validator: (v) =>
-                        (v == null || v.isEmpty)
-                            ? 'Por favor describa el incidente'
-                            : null,
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? 'Por favor describa el incidente'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -185,7 +216,10 @@ class _ReportarRoboState extends State<ReportarRobo>
                 const SizedBox(height: 16),
 
                 // ── Checkboxes ──
-                _buildSectionLabel('Detalles Adicionales', Icons.checklist_rounded),
+                _buildSectionLabel(
+                  'Detalles Adicionales',
+                  Icons.checklist_rounded,
+                ),
                 const SizedBox(height: 10),
                 _buildCheckboxes(),
                 const SizedBox(height: 24),
@@ -231,7 +265,11 @@ class _ReportarRoboState extends State<ReportarRobo>
         children: [
           Row(
             children: [
-              const Icon(Icons.bar_chart_rounded, color: AppColors.accentRed, size: 18),
+              const Icon(
+                Icons.bar_chart_rounded,
+                color: AppColors.accentRed,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 'ESTADÍSTICAS DE HOY',
@@ -247,9 +285,21 @@ class _ReportarRoboState extends State<ReportarRobo>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatChip('15', 'Reportes', AppColors.accentRed),
-              _buildStatChip('Ceja', 'Zona Riesgo', AppColors.warningAmber),
-              _buildStatChip('+5%', 'Tendencia', AppColors.dangerRed),
+              _buildStatChip(
+                '${_stats?['reports_today'] ?? 0}',
+                'Reportes hoy',
+                AppColors.accentRed,
+              ),
+              _buildStatChip(
+                _zonaPrincipalLabel,
+                'Zona riesgo',
+                AppColors.warningAmber,
+              ),
+              _buildStatChip(
+                '${_stats?['reports_week'] ?? 0}',
+                'Esta semana',
+                AppColors.dangerRed,
+              ),
             ],
           ),
         ],
@@ -282,7 +332,10 @@ class _ReportarRoboState extends State<ReportarRobo>
               onTap: () => setState(() => _tipoRobo = tipo),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 8,
+                ),
                 decoration: BoxDecoration(
                   gradient: selected ? AppGradients.headerBlue : null,
                   borderRadius: BorderRadius.circular(12),
@@ -336,9 +389,7 @@ class _ReportarRoboState extends State<ReportarRobo>
                             : AppColors.glassWhite,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: selected
-                              ? entry.value
-                              : AppColors.glassBorder,
+                          color: selected ? entry.value : AppColors.glassBorder,
                           width: selected ? 1.5 : 1,
                         ),
                       ),
@@ -347,7 +398,9 @@ class _ReportarRoboState extends State<ReportarRobo>
                         textAlign: TextAlign.center,
                         style: AppTextStyles.caption.copyWith(
                           color: selected ? entry.value : AppColors.textHint,
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w400,
                         ),
                       ),
                     ),
@@ -374,7 +427,11 @@ class _ReportarRoboState extends State<ReportarRobo>
         children: [
           Row(
             children: [
-              const Icon(Icons.smartphone_rounded, color: Color(0xFFBF5AF2), size: 18),
+              const Icon(
+                Icons.smartphone_rounded,
+                color: Color(0xFFBF5AF2),
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 '📱 Datos del dispositivo robado',
@@ -386,9 +443,19 @@ class _ReportarRoboState extends State<ReportarRobo>
             ],
           ),
           const SizedBox(height: 18),
-          _buildDarkDropdown('Marca del celular', _marcaCelular,
-              ['Samsung', 'Xiaomi', 'Motorola', 'Huawei', 'iPhone', 'Otras marcas'],
-              (v) => setState(() => _marcaCelular = v!)),
+          _buildDarkDropdown(
+            'Marca del celular',
+            _marcaCelular,
+            [
+              'Samsung',
+              'Xiaomi',
+              'Motorola',
+              'Huawei',
+              'iPhone',
+              'Otras marcas',
+            ],
+            (v) => setState(() => _marcaCelular = v!),
+          ),
           _buildDarkDropdown(
             'Modelo aproximado',
             _modeloCelular,
@@ -399,13 +466,19 @@ class _ReportarRoboState extends State<ReportarRobo>
             ],
             (v) => setState(() => _modeloCelular = v!),
           ),
-          _buildDarkDropdown('Estado del celular', _estadoCelular,
-              ['Nuevo', 'Usado (buen estado)', 'Usado (dañado o pantalla rota)'],
-              (v) => setState(() => _estadoCelular = v!)),
-          _buildDarkDropdown('Color del dispositivo', _colorCelular,
-              ['Negro / Gris', 'Azul', 'Blanco', 'Rojo', 'Otro'],
-              (v) => setState(() => _colorCelular = v!),
-              isLast: true),
+          _buildDarkDropdown(
+            'Estado del celular',
+            _estadoCelular,
+            ['Nuevo', 'Usado (buen estado)', 'Usado (dañado o pantalla rota)'],
+            (v) => setState(() => _estadoCelular = v!),
+          ),
+          _buildDarkDropdown(
+            'Color del dispositivo',
+            _colorCelular,
+            ['Negro / Gris', 'Azul', 'Blanco', 'Rojo', 'Otro'],
+            (v) => setState(() => _colorCelular = v!),
+            isLast: true,
+          ),
         ],
       ),
     );
@@ -428,10 +501,16 @@ class _ReportarRoboState extends State<ReportarRobo>
           DropdownButtonFormField<String>(
             value: value,
             dropdownColor: AppColors.bgCard,
-            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary, fontSize: 14),
+            style: AppTextStyles.body.copyWith(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
             iconEnabledColor: AppColors.textSecondary,
             decoration: InputDecoration(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: const BorderSide(color: AppColors.glassBorder),
@@ -442,7 +521,10 @@ class _ReportarRoboState extends State<ReportarRobo>
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.accentBlue, width: 1.5),
+                borderSide: const BorderSide(
+                  color: AppColors.accentBlue,
+                  width: 1.5,
+                ),
               ),
               filled: true,
               fillColor: AppColors.glassWhite,
@@ -451,7 +533,13 @@ class _ReportarRoboState extends State<ReportarRobo>
             items: items.map((item) {
               return DropdownMenuItem<String>(
                 value: item,
-                child: Text(item, style: AppTextStyles.body.copyWith(fontSize: 13, color: AppColors.textPrimary)),
+                child: Text(
+                  item,
+                  style: AppTextStyles.body.copyWith(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
               );
             }).toList(),
             onChanged: onChanged,
@@ -474,7 +562,11 @@ class _ReportarRoboState extends State<ReportarRobo>
         ),
         child: Row(
           children: [
-            const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.textSecondary),
+            const Icon(
+              Icons.calendar_today_rounded,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: 8),
             Text(
               '${_fechaIncidente.day}/${_fechaIncidente.month}/${_fechaIncidente.year}',
@@ -498,7 +590,11 @@ class _ReportarRoboState extends State<ReportarRobo>
         ),
         child: Row(
           children: [
-            const Icon(Icons.access_time_rounded, size: 18, color: AppColors.textSecondary),
+            const Icon(
+              Icons.access_time_rounded,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: 8),
             Text(
               _horaIncidente.format(context),
@@ -582,7 +678,9 @@ class _ReportarRoboState extends State<ReportarRobo>
               width: 22,
               height: 22,
               decoration: BoxDecoration(
-                color: value ? accentColor.withOpacity(0.2) : AppColors.glassWhite,
+                color: value
+                    ? accentColor.withOpacity(0.2)
+                    : AppColors.glassWhite,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
                   color: value ? accentColor : AppColors.glassBorder,
@@ -597,8 +695,9 @@ class _ReportarRoboState extends State<ReportarRobo>
             Expanded(
               child: Text(
                 label,
-                style: (isSubItem ? AppTextStyles.bodySmall : AppTextStyles.body)
-                    .copyWith(color: AppColors.textPrimary),
+                style:
+                    (isSubItem ? AppTextStyles.bodySmall : AppTextStyles.body)
+                        .copyWith(color: AppColors.textPrimary),
               ),
             ),
           ],
@@ -612,13 +711,13 @@ class _ReportarRoboState extends State<ReportarRobo>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GradientButton(
-          text: _enviandoCorreo ? 'Enviando...' : 'Reportar Incidente',
-          icon: _enviandoCorreo ? null : Icons.report_rounded,
-          isLoading: _enviandoCorreo,
+          text: _registrandoReporte ? 'Registrando...' : 'Reportar Incidente',
+          icon: _registrandoReporte ? null : Icons.report_rounded,
+          isLoading: _registrandoReporte,
           colors: const [AppColors.accentRed, AppColors.accentRedDark],
           shadows: AppShadows.redGlow,
           height: 58,
-          onPressed: _enviandoCorreo ? null : _enviarReporte,
+          onPressed: _registrandoReporte ? null : _enviarReporte,
         ),
         const SizedBox(height: 10),
         GestureDetector(
@@ -633,7 +732,11 @@ class _ReportarRoboState extends State<ReportarRobo>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.bar_chart_rounded, color: AppColors.accentBlueLight, size: 20),
+                const Icon(
+                  Icons.bar_chart_rounded,
+                  color: AppColors.accentBlueLight,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Ver Estadísticas',
@@ -698,45 +801,48 @@ class _ReportarRoboState extends State<ReportarRobo>
     if (!_formKey.currentState!.validate()) return;
 
     HapticFeedback.heavyImpact();
-    setState(() => _enviandoCorreo = true);
+    setState(() => _registrandoReporte = true);
 
     _contenidoReporte = _generarContenidoReporte();
 
     try {
-      final subject = Uri.encodeComponent('🚨 Reporte de Robo - UbicaSafe');
-      final body = Uri.encodeComponent(_contenidoReporte);
-      final mailtoUrl = 'mailto:ubicasafeapp@gmail.com?subject=$subject&body=$body';
+      final saved = await _apiService.createReport(
+        reportType: _tipoRobo,
+        locationText: _ubicacionController.text.trim(),
+        description: _descripcionController.text.trim(),
+        violenceLevel: _nivelViolencia,
+        incidentDate: _fechaHoraIncidente,
+        hadInjuries: _lesiones,
+        hadWeapons: _armas,
+        weaponType: _tipoArma,
+        deviceBrand: _tipoRobo == 'Robo de celular' ? _marcaCelular : null,
+        deviceModel: _tipoRobo == 'Robo de celular' ? _modeloCelular : null,
+        deviceCondition: _tipoRobo == 'Robo de celular' ? _estadoCelular : null,
+        deviceColor: _tipoRobo == 'Robo de celular' ? _colorCelular : null,
+      );
 
-      bool correoAbierto = false;
+      if (!mounted) return;
 
-      if (await canLaunchUrl(Uri.parse(mailtoUrl))) {
-        try {
-          await launchUrl(Uri.parse(mailtoUrl), mode: LaunchMode.externalApplication);
-          correoAbierto = true;
-        } catch (_) {}
-      }
-
-      if (!correoAbierto) {
-        try {
-          await launchUrl(Uri.parse(mailtoUrl), mode: LaunchMode.externalApplication);
-          correoAbierto = true;
-        } catch (_) {}
-      }
-
-      if (correoAbierto) {
+      if (saved) {
+        await _cargarEstadisticas();
         _mostrarDialogoExito();
       } else {
-        _mostrarDialogoGmailNoAbrio();
+        await _guardarReporteSilencioso();
+        if (!mounted) return;
+        _mostrarDialogoFalloBackend();
       }
-    } catch (e) {
-      _mostrarDialogoGmailNoAbrio();
+    } catch (_) {
+      await _guardarReporteSilencioso();
+      if (!mounted) return;
+      _mostrarDialogoFalloBackend();
     } finally {
-      setState(() => _enviandoCorreo = false);
+      if (mounted) setState(() => _registrandoReporte = false);
     }
   }
 
   String _generarContenidoReporte() {
-    String contenido = '''
+    String contenido =
+        '''
 REPORTE DE ROBO - UBICASAFE
 ============================
 
@@ -752,18 +858,26 @@ REPORTE DE ROBO - UBICASAFE
 
     if (_armas) {
       contenido += '• Tipo de Armas:\n';
-      if (_armaFuego) contenido += '  - Arma de fuego\n';
-      if (_armaBlanca) contenido += '  - Arma blanca\n';
-      if (!_armaFuego && !_armaBlanca) contenido += '  - Tipo no especificado\n';
+      if (_armaFuego) {
+        contenido += '  - Arma de fuego\n';
+      }
+      if (_armaBlanca) {
+        contenido += '  - Arma blanca\n';
+      }
+      if (!_armaFuego && !_armaBlanca) {
+        contenido += '  - Tipo no especificado\n';
+      }
     }
 
-    contenido += '''
+    contenido +=
+        '''
 📝 DESCRIPCIÓN:
 ${_descripcionController.text}
 ''';
 
     if (_tipoRobo == 'Robo de celular') {
-      contenido += '''
+      contenido +=
+          '''
 
 📱 DATOS DEL DISPOSITIVO:
 • Marca: $_marcaCelular
@@ -773,7 +887,8 @@ ${_descripcionController.text}
 ''';
     }
 
-    contenido += '''
+    contenido +=
+        '''
 
 📄 INFO ADICIONAL:
 • Generado: ${DateTime.now()}
@@ -784,8 +899,7 @@ Este reporte fue generado automáticamente por UbicaSafe.
     return contenido;
   }
 
-  void _mostrarDialogoGmailNoAbrio() {
-    _guardarReporteSilencioso();
+  void _mostrarDialogoFalloBackend() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -795,36 +909,30 @@ Este reporte fue generado automáticamente por UbicaSafe.
           children: [
             const Icon(Icons.warning_rounded, color: AppColors.warningAmber),
             const SizedBox(width: 8),
-            Text('Gmail no disponible', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
+            Text(
+              'No se pudo registrar',
+              style: AppTextStyles.headline3.copyWith(fontSize: 17),
+            ),
           ],
         ),
         content: Text(
-          'Envía el reporte manualmente a:\nubicasafeapp@gmail.com\n\nEl reporte fue guardado en tu dispositivo.',
-          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+          'No pudimos conectar con el servidor. Guardamos una copia local del reporte para que no pierdas la información.',
+          style: AppTextStyles.body.copyWith(
+            fontSize: 14,
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _abrirGmailManualmente();
-            },
-            child: const Text('Abrir Gmail', style: TextStyle(color: AppColors.accentBlueLight)),
-          ),
-          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Entendido', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Entendido',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
         ],
       ),
     );
-  }
-
-  void _abrirGmailManualmente() async {
-    try {
-      if (await canLaunchUrl(Uri.parse('https://mail.google.com/'))) {
-        await launchUrl(Uri.parse('https://mail.google.com/'));
-      }
-    } catch (_) {}
   }
 
   void _mostrarDialogoExito() {
@@ -837,17 +945,26 @@ Este reporte fue generado automáticamente por UbicaSafe.
           children: [
             const Icon(Icons.check_circle_rounded, color: AppColors.safeGreen),
             const SizedBox(width: 8),
-            Text('¡Reporte Enviado!', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
+            Text(
+              '¡Reporte Enviado!',
+              style: AppTextStyles.headline3.copyWith(fontSize: 17),
+            ),
           ],
         ),
         content: Text(
-          'Se abrió Gmail con tu reporte.\nPresiona "Enviar" para completar el reporte.',
-          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+          'Tu reporte fue registrado en el backend de UbicaSafe y ya puede alimentar estadísticas y consultas de IA.',
+          style: AppTextStyles.body.copyWith(
+            fontSize: 14,
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: AppColors.accentBlueLight)),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: AppColors.accentBlueLight),
+            ),
           ),
         ],
       ),
@@ -857,24 +974,32 @@ Este reporte fue generado automáticamente por UbicaSafe.
   Future<void> _guardarReporteSilencioso() async {
     try {
       final output = await getTemporaryDirectory();
-      final file = File('${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt');
+      final file = File(
+        '${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt',
+      );
       await file.writeAsString(_contenidoReporte);
     } catch (_) {}
   }
 
-  Future<void> _guardarReporte() async {
+  Future<void> _guardarCopiaLocal() async {
     _contenidoReporte = _generarContenidoReporte();
 
     final output = await getTemporaryDirectory();
-    final file = File('${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt');
+    final file = File(
+      '${output.path}/reporte_robo_${DateTime.now().millisecondsSinceEpoch}.txt',
+    );
     await file.writeAsString(_contenidoReporte);
 
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.bgCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Reporte Guardado', style: AppTextStyles.headline3.copyWith(fontSize: 17)),
+        title: Text(
+          'Reporte Guardado',
+          style: AppTextStyles.headline3.copyWith(fontSize: 17),
+        ),
         content: Text(
           'El reporte se ha guardado exitosamente en tu dispositivo.',
           style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
@@ -882,7 +1007,10 @@ Este reporte fue generado automáticamente por UbicaSafe.
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: AppColors.accentBlueLight)),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: AppColors.accentBlueLight),
+            ),
           ),
         ],
       ),
@@ -890,6 +1018,11 @@ Este reporte fue generado automáticamente por UbicaSafe.
   }
 
   void _mostrarEstadisticas() {
+    _cargarEstadisticas();
+    final byType = _stats?['by_type'] as Map<String, dynamic>? ?? {};
+    final byViolence = _stats?['by_violence'] as Map<String, dynamic>? ?? {};
+    final topZone = _stats?['most_dangerous_zone'] as Map<String, dynamic>?;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -907,13 +1040,43 @@ Este reporte fue generado automáticamente por UbicaSafe.
           children: [
             Text('Estadísticas de Robos', style: AppTextStyles.headline3),
             const SizedBox(height: 4),
-            Text('El Alto · La Paz — Hoy', style: AppTextStyles.bodySmall),
+            Text('Datos reales del backend', style: AppTextStyles.bodySmall),
             const SizedBox(height: 20),
-            _buildEstadRow('Reportes Hoy', '15', AppColors.accentBlue),
-            _buildEstadRow('Zona Más Peligrosa', 'Ceja El Alto', AppColors.dangerRed),
-            _buildEstadRow('Robos a Persona', '65%', AppColors.warningAmber),
-            _buildEstadRow('Robos a Vivienda', '20%', AppColors.safeGreen),
-            _buildEstadRow('Robos a Vehículo', '15%', const Color(0xFFBF5AF2)),
+            _buildEstadRow(
+              'Reportes Hoy',
+              '${_stats?['reports_today'] ?? 0}',
+              AppColors.accentBlue,
+            ),
+            _buildEstadRow(
+              'Reportes Semana',
+              '${_stats?['reports_week'] ?? 0}',
+              AppColors.warningAmber,
+            ),
+            _buildEstadRow(
+              'Reportes Totales',
+              '${_stats?['reports_total'] ?? 0}',
+              AppColors.safeGreen,
+            ),
+            _buildEstadRow(
+              'Zona Más Reportada',
+              topZone?['name'] as String? ?? 'Sin datos',
+              AppColors.dangerRed,
+            ),
+            _buildEstadRow(
+              'Robos a Persona',
+              '${byType['Robo a Persona'] ?? 0}',
+              AppColors.warningAmber,
+            ),
+            _buildEstadRow(
+              'Robos de Celular',
+              '${byType['Robo de celular'] ?? 0}',
+              const Color(0xFFBF5AF2),
+            ),
+            _buildEstadRow(
+              'Violencia Alta/Extrema',
+              '${(byViolence['Alto'] ?? 0) + (byViolence['Extremo'] ?? 0)}',
+              AppColors.dangerRed,
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -932,7 +1095,12 @@ Este reporte fue generado automáticamente por UbicaSafe.
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Text(label, style: AppTextStyles.body.copyWith(fontSize: 14))),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.body.copyWith(fontSize: 14),
+            ),
+          ),
           Text(
             value,
             style: AppTextStyles.body.copyWith(

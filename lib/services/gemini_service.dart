@@ -36,7 +36,13 @@ class GeminiService {
       return ragResponse.answer;
     }
 
-    // Fallback to direct Gemini if backend is down
+    // Si el backend de la VPS respondió pero con un error de servidor (ej: 500, 400),
+    // mostramos ese error directamente para que sea visible y diagnosticable.
+    if (!ragResponse.error && ragResponse.answer.isNotEmpty) {
+      return ragResponse.answer;
+    }
+
+    // Solo recurre al fallback local de Gemini si el backend de la VPS está caído o inaccesible (error de red)
     return sendSafetyMessage(
       message: message,
       recentMessages: recentMessages,

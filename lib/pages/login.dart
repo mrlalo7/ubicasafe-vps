@@ -162,30 +162,20 @@ class _LoginState extends State<Login> with SingleTickerProviderStateMixin {
                     child: Column(
                       children: [
                         Container(
-                          width: 88,
-                          height: 88,
+                          width: 100,
+                          height: 100,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [
-                                AppColors.accentBlue,
-                                AppColors.accentBlueDark,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
                             boxShadow: [
                               BoxShadow(
                                 color: AppColors.accentBlue.withOpacity(0.4),
-                                blurRadius: 30,
+                                blurRadius: 36,
                                 spreadRadius: 4,
                               ),
                             ],
                           ),
-                          child: const Icon(
-                            Icons.shield_outlined,
-                            color: Colors.white,
-                            size: 44,
+                          child: Image.asset(
+                            'assets/icons/ubicasafe_shield.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                         const SizedBox(height: 20),

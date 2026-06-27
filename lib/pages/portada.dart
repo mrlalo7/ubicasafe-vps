@@ -11,8 +11,9 @@ class Portada extends StatefulWidget {
 }
 
 class _PortadaState extends State<Portada>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin {
+  late AnimationController _entryController;
+  late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
@@ -22,31 +23,36 @@ class _PortadaState extends State<Portada>
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
 
-    _controller = AnimationController(
+    _entryController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 1200),
     );
 
-    _pulseAnim = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    );
+
+    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+        parent: _entryController,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
       ),
     );
 
-    _scaleAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
+        parent: _entryController,
+        curve: const Interval(0.1, 0.8, curve: Curves.elasticOut),
       ),
     );
 
-    _controller.forward();
-    _controller.repeat(reverse: true);
+    _entryController.forward();
+    _pulseController.repeat(reverse: true);
 
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
@@ -66,7 +72,8 @@ class _PortadaState extends State<Portada>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _entryController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -128,83 +135,93 @@ class _PortadaState extends State<Portada>
           ),
 
           // ── Contenido central ──
-          FadeTransition(
-            opacity: _fadeAnim,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo pulsante
-                AnimatedBuilder(
-                  animation: _scaleAnim,
-                  builder: (_, __) => Transform.scale(
-                    scale: _scaleAnim.value,
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [AppColors.accentBlue, AppColors.accentBlueDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.accentBlue.withOpacity(0.5),
-                            blurRadius: 40,
-                            spreadRadius: 8,
+          Positioned.fill(
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Logo pulsante
+                    AnimatedBuilder(
+                      animation: _scaleAnim,
+                      builder: (_, __) => Transform.scale(
+                        scale: _scaleAnim.value,
+                        child: Container(
+                          width: 140,
+                          height: 140,
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accentBlue.withOpacity(0.45),
+                                blurRadius: 48,
+                                spreadRadius: 6,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.shield_outlined,
-                        color: Colors.white,
-                        size: 56,
+                          child: Image.asset(
+                            'assets/icons/ubicasafe_shield.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 28),
+                    const SizedBox(height: 28),
 
-                // Nombre de la app
-                Text('UbicaSafe', style: AppTextStyles.headline1),
-                const SizedBox(height: 8),
-                Text(
-                  'Tu seguridad, nuestra misión',
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 56),
-
-                // Indicador de carga
-                SizedBox(
-                  width: 180,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      backgroundColor: AppColors.glassWhite,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppColors.accentBlue,
-                      ),
-                      minHeight: 3,
+                    // Nombre de la app
+                    Text(
+                      'UbicaSafe',
+                      style: AppTextStyles.headline1,
+                      textAlign: TextAlign.center,
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tu seguridad, nuestra misión',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 56),
+
+                    // Indicador de carga
+                    SizedBox(
+                      width: 180,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          backgroundColor: AppColors.glassWhite,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.accentBlue,
+                          ),
+                          minHeight: 3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Cargando...',
+                      style: AppTextStyles.caption,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                Text('Cargando...', style: AppTextStyles.caption),
-              ],
+              ),
             ),
           ),
 
           // ── Tagline inferior ──
           Positioned(
             bottom: 48,
+            left: 0,
+            right: 0,
             child: FadeTransition(
               opacity: _fadeAnim,
               child: Text(
                 'El Alto · La Paz · Bolivia',
+                textAlign: TextAlign.center,
                 style: AppTextStyles.caption.copyWith(
                   letterSpacing: 2,
                   color: AppColors.textHint,
