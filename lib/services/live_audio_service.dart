@@ -43,64 +43,76 @@ class LiveAudioService {
     _running = true;
     _emitState(LiveAudioState.connecting);
 
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
-      _emitMessage('Permiso de micrófono denegado.');
+    try {
+      final hasPermission = await _recorder.hasPermission();
+      if (!hasPermission) {
+        _emitMessage('Permiso de micrófono denegado.');
+        _emitState(LiveAudioState.error);
+        _running = false;
+        return;
+      }
+
+      await _ensurePlayer();
+      final uri = Uri.parse(_baseUrl).replace(
+        scheme: Uri.parse(_baseUrl).scheme == 'https' ? 'wss' : 'ws',
+        path: '/api/live',
+      );
+
+      _channel = WebSocketChannel.connect(uri);
+      _socketSubscription = _channel!.stream.listen(
+        _handleSocketMessage,
+        onError: (Object error) {
+          _emitMessage('Se perdió la conexión Live: $error');
+          _emitState(LiveAudioState.error);
+          _connected = false;
+          _running = false;
+        },
+        onDone: () {
+          _connected = false;
+          if (_running) {
+            _emitMessage('La llamada terminó.');
+            _emitState(LiveAudioState.idle);
+          }
+          _running = false;
+        },
+      );
+
+      final stream = await _recorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: 16000,
+          numChannels: 1,
+          echoCancel: true,
+          noiseSuppress: true,
+          autoGain: true,
+          streamBufferSize: 640,
+        ),
+      );
+
+      _recordingSubscription = stream.listen((chunk) {
+        if (muted) return;
+        _channel?.sink.add(
+          jsonEncode({
+            'type': 'audio',
+            'mimeType': 'audio/pcm;rate=16000',
+            'data': base64Encode(chunk),
+          }),
+        );
+      });
+
+      _emitMessage('Gemini Live está escuchando.');
+      _emitState(LiveAudioState.listening);
+    } catch (error) {
+      _emitMessage('No pude iniciar Gemini Live: $error');
       _emitState(LiveAudioState.error);
       _running = false;
-      return;
+      _connected = false;
+      await _recordingSubscription?.cancel();
+      _recordingSubscription = null;
+      await _recorder.stop();
+      await _channel?.sink.close();
+      _channel = null;
     }
-
-    await _ensurePlayer();
-    final uri = Uri.parse(_baseUrl).replace(
-      scheme: Uri.parse(_baseUrl).scheme == 'https' ? 'wss' : 'ws',
-      path: '/api/live',
-    );
-
-    _channel = WebSocketChannel.connect(uri);
-    _socketSubscription = _channel!.stream.listen(
-      _handleSocketMessage,
-      onError: (_) {
-        _emitMessage('Se perdió la conexión con Gemini Live.');
-        _emitState(LiveAudioState.error);
-        _connected = false;
-        _running = false;
-      },
-      onDone: () {
-        _connected = false;
-        if (_running) {
-          _emitMessage('La llamada terminó.');
-          _emitState(LiveAudioState.idle);
-        }
-        _running = false;
-      },
-    );
-
-    final stream = await _recorder.startStream(
-      const RecordConfig(
-        encoder: AudioEncoder.pcm16bits,
-        sampleRate: 16000,
-        numChannels: 1,
-        echoCancel: true,
-        noiseSuppress: true,
-        autoGain: true,
-        streamBufferSize: 640,
-      ),
-    );
-
-    _recordingSubscription = stream.listen((chunk) {
-      if (muted) return;
-      _channel?.sink.add(
-        jsonEncode({
-          'type': 'audio',
-          'mimeType': 'audio/pcm;rate=16000',
-          'data': base64Encode(chunk),
-        }),
-      );
-    });
-
-    _emitMessage('Gemini Live está escuchando.');
-    _emitState(LiveAudioState.listening);
   }
 
   Future<bool> sendText(String text) async {
@@ -111,7 +123,11 @@ class LiveAudioService {
       await start();
     }
     final channel = _channel;
-    if (channel == null) return false;
+    if (channel == null) {
+      _emitMessage('Gemini Live no está conectado.');
+      _emitState(LiveAudioState.error);
+      return false;
+    }
 
     try {
       channel.sink.add(jsonEncode({'type': 'text', 'text': cleanText}));

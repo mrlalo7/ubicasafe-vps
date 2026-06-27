@@ -11,8 +11,6 @@ import 'package:ubicasafe/pages/configuracion.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
-import 'package:ubicasafe/services/backend_tts_service.dart';
-import 'package:ubicasafe/services/gemini_service.dart';
 import 'package:ubicasafe/services/live_audio_service.dart';
 
 class ChatIaScreen extends StatefulWidget {
@@ -25,9 +23,7 @@ class ChatIaScreen extends StatefulWidget {
 class _ChatIaScreenState extends State<ChatIaScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _voiceController;
-  final GeminiService _geminiService = GeminiService();
   final LiveAudioService _liveAudioService = LiveAudioService();
-  final BackendTtsService _backendTtsService = BackendTtsService();
   final SpeechToText _speech = SpeechToText();
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _textController = TextEditingController();
@@ -43,7 +39,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
   bool _listening = false;
   bool _speechAvailable = false;
   bool _autoListen = true;
-  bool _ttsReady = false;
   String _localeId = 'es_BO';
   String _lastSubmittedSpeech = '';
   bool _micMuted = false;
@@ -75,7 +70,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     _liveStateSubscription?.cancel();
     _liveMessageSubscription?.cancel();
     _liveAudioService.dispose();
-    _backendTtsService.dispose();
     _voiceController.dispose();
     _speech.stop();
     _tts.stop();
@@ -240,7 +234,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     } catch (_) {
       // The platform TTS voice list is optional; language/rate still improve output.
     }
-    _ttsReady = true;
   }
 
   int _spanishVoiceScore(Map voice) {
@@ -411,48 +404,14 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       return;
     }
 
-    await _backendTtsService.stop();
-    final reply = await _geminiService.sendRagMessage(
-      message: value,
-      recentMessages: _conversation.reversed.skip(1).toList(),
-    );
-
     if (!mounted) return;
     setState(() {
       _thinking = false;
-      _speaking = true;
-      _assistantStatus = 'Wara respondió';
-      _assistantReply = reply;
+      _speaking = false;
+      _assistantStatus = 'Live API no disponible';
+      _assistantReply =
+          'No pude conectar con la llamada en vivo. Revisa permisos de micrófono, WebSocket o el log /api/live del backend.';
     });
-    await _speak(reply);
-  }
-
-  Future<void> _speak(String text) async {
-    final cleanText = text
-        .replaceAll(RegExp(r'[*_`#>-]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (cleanText.isEmpty) return;
-
-    final spokenByBackend = await _backendTtsService.speak(cleanText);
-    if (spokenByBackend) {
-      if (!mounted) return;
-      setState(() {
-        _speaking = false;
-        _assistantStatus = _autoListen
-            ? 'Esperando tu voz...'
-            : 'Toca el micrófono para hablar';
-      });
-      if (_autoListen) {
-        _scheduleListeningRestart();
-      }
-      return;
-    }
-
-    if (!_ttsReady) {
-      await _configureNaturalVoice();
-    }
-    await _tts.speak(cleanText);
   }
 
   String get _elapsedLabel {

@@ -75,6 +75,7 @@ async def _send_json(websocket: WebSocket, payload: dict) -> None:
 async def live_voice(websocket: WebSocket) -> None:
     """Bridge Flutter PCM audio to Gemini Live and stream PCM audio back."""
     await websocket.accept()
+    logger.info("Live voice websocket accepted client=%s", websocket.client)
     client = genai.Client(api_key=settings.gemini_api_key)
     live_context = await _build_live_context()
     config = {
@@ -98,6 +99,11 @@ async def live_voice(websocket: WebSocket) -> None:
             model=settings.live_model,
             config=config,
         ) as session:
+            logger.info(
+                "Gemini Live session ready model=%s voice=%s",
+                settings.live_model,
+                settings.live_voice_name,
+            )
             await _send_json(
                 websocket,
                 {
@@ -126,8 +132,10 @@ async def live_voice(websocket: WebSocket) -> None:
                             )
                         )
                     elif message_type == "text":
+                        logger.info("Live text message received")
                         await session.send_realtime_input(text=message["text"])
                     elif message_type == "stop":
+                        logger.info("Live voice stop received")
                         break
 
             async def send_to_client() -> None:
