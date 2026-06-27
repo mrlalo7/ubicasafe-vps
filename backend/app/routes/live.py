@@ -29,18 +29,20 @@ async def _build_live_context() -> str:
         zone_result = await session.execute(
             select(RiskZone)
             .order_by(RiskZone.report_count.desc(), RiskZone.risk_level.desc())
-            .limit(8)
+            .limit(30)
         )
         zones = list(zone_result.scalars().all())
 
         report_result = await session.execute(
-            select(Report).order_by(Report.created_at.desc()).limit(8)
+            select(Report).order_by(Report.created_at.desc()).limit(12)
         )
         reports = list(report_result.scalars().all())
 
     parts = [
         "Eres IA+ de UbicaSafe, asistente de seguridad ciudadana para El Alto, Bolivia.",
-        "Responde siempre en español claro, breve y útil.",
+        "Responde siempre breve, natural y útil.",
+        "Si el usuario habla en aymara, responde en aymara claro y conserva los niveles BAJO, MEDIO, ALTO o CRITICO entre paréntesis.",
+        "Si el usuario habla en español, responde en español claro.",
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un lugar seguro.",
         "No afirmes que contactaste autoridades. Orienta al usuario para reportar o prevenir.",
     ]
@@ -77,8 +79,11 @@ async def live_voice(websocket: WebSocket) -> None:
     live_context = await _build_live_context()
     config = {
         "response_modalities": ["AUDIO"],
+        "input_audio_transcription": {},
+        "output_audio_transcription": {},
         "system_instruction": live_context,
-        "temperature": 0.7,
+        "temperature": 0.55,
+        "thinking_config": {"thinking_level": "minimal"},
         "speech_config": {
             "voice_config": {
                 "prebuilt_voice_config": {
@@ -139,6 +144,32 @@ async def live_voice(websocket: WebSocket) -> None:
 
                         if getattr(server_content, "generation_complete", False):
                             await _send_json(websocket, {"type": "complete"})
+
+                        input_transcription = getattr(
+                            server_content,
+                            "input_transcription",
+                            None,
+                        )
+                        if input_transcription is not None:
+                            text = getattr(input_transcription, "text", "")
+                            if text:
+                                await _send_json(
+                                    websocket,
+                                    {"type": "input_transcript", "text": text},
+                                )
+
+                        output_transcription = getattr(
+                            server_content,
+                            "output_transcription",
+                            None,
+                        )
+                        if output_transcription is not None:
+                            text = getattr(output_transcription, "text", "")
+                            if text:
+                                await _send_json(
+                                    websocket,
+                                    {"type": "output_transcript", "text": text},
+                                )
 
                         model_turn = server_content.model_turn
                         if model_turn is None:

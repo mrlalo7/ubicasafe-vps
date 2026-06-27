@@ -375,9 +375,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     HapticFeedback.selectionClick();
     _autoListen = false;
     _restartListenTimer?.cancel();
-    _speech.stop();
-    _backendTtsService.stop();
-    _tts.stop();
+    if (_listening) {
+      _speech.stop();
+    }
     setState(() => _keyboardOpen = !_keyboardOpen);
   }
 
@@ -388,8 +388,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     HapticFeedback.mediumImpact();
     _autoListen = true;
     _restartListenTimer?.cancel();
-    await _liveAudioService.stop();
-    await _backendTtsService.stop();
     await _speech.stop();
     await _tts.stop();
     setState(() {
@@ -398,10 +396,22 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       _keyboardOpen = preset == null;
       _speaking = true;
       _thinking = true;
-      _assistantStatus = _localStatusFor(value);
-      _assistantReply = 'Consultando a Wara...';
+      _assistantStatus = 'Enviando a Wara Live...';
+      _assistantReply = value;
     });
 
+    final sentByLive = await _liveAudioService.sendText(value);
+    if (sentByLive) {
+      if (!mounted) return;
+      setState(() {
+        _thinking = false;
+        _speaking = true;
+        _assistantStatus = 'Wara está respondiendo...';
+      });
+      return;
+    }
+
+    await _backendTtsService.stop();
     final reply = await _geminiService.sendRagMessage(
       message: value,
       recentMessages: _conversation.reversed.skip(1).toList(),
@@ -443,27 +453,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       await _configureNaturalVoice();
     }
     await _tts.speak(cleanText);
-  }
-
-  String _localStatusFor(String input) {
-    final text = input.toLowerCase();
-    if (text.contains('report') ||
-        text.contains('robo') ||
-        text.contains('incidente')) {
-      return 'Preparando guía para reportar incidente...';
-    }
-    if (text.contains('zona') ||
-        text.contains('segura') ||
-        text.contains('riesgo')) {
-      return 'Consultando el nivel de riesgo cercano...';
-    }
-    if (text.contains('ayuda') || text.contains('urgente')) {
-      return 'Priorizando asistencia inmediata...';
-    }
-    if (text.contains('consejo') || text.contains('seguridad')) {
-      return 'Generando consejos de seguridad...';
-    }
-    return 'Analizando tu mensaje...';
   }
 
   String get _elapsedLabel {

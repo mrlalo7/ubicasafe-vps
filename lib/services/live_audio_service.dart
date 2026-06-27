@@ -30,10 +30,13 @@ class LiveAudioService {
   StreamSubscription<Uint8List>? _recordingSubscription;
   StreamSubscription? _socketSubscription;
   bool _running = false;
+  bool _connected = false;
   bool _playerReady = false;
 
   Stream<LiveAudioState> get states => _stateController.stream;
   Stream<String> get messages => _messageController.stream;
+  bool get isRunning => _running;
+  bool get isConnected => _connected;
 
   Future<void> start() async {
     if (_running) return;
@@ -60,12 +63,16 @@ class LiveAudioService {
       onError: (_) {
         _emitMessage('Se perdió la conexión con Gemini Live.');
         _emitState(LiveAudioState.error);
+        _connected = false;
+        _running = false;
       },
       onDone: () {
+        _connected = false;
         if (_running) {
           _emitMessage('La llamada terminó.');
           _emitState(LiveAudioState.idle);
         }
+        _running = false;
       },
     );
 
@@ -96,17 +103,40 @@ class LiveAudioService {
     _emitState(LiveAudioState.listening);
   }
 
+  Future<bool> sendText(String text) async {
+    final cleanText = text.trim();
+    if (cleanText.isEmpty) return true;
+
+    if (!_running) {
+      await start();
+    }
+    final channel = _channel;
+    if (channel == null) return false;
+
+    try {
+      channel.sink.add(jsonEncode({'type': 'text', 'text': cleanText}));
+      _emitMessage('Tú: $cleanText');
+      _emitState(LiveAudioState.speaking);
+      return true;
+    } catch (_) {
+      _emitMessage('No pude enviar el mensaje por la llamada en vivo.');
+      _emitState(LiveAudioState.error);
+      return false;
+    }
+  }
+
   Future<void> stop() async {
     _running = false;
+    _connected = false;
     muted = false;
+    try {
+      _channel?.sink.add(jsonEncode({'type': 'stop'}));
+    } catch (_) {}
     await _recordingSubscription?.cancel();
     _recordingSubscription = null;
     await _socketSubscription?.cancel();
     _socketSubscription = null;
     await _recorder.stop();
-    try {
-      _channel?.sink.add(jsonEncode({'type': 'stop'}));
-    } catch (_) {}
     await _channel?.sink.close();
     _channel = null;
     await _player.stopPlayer();
@@ -146,6 +176,7 @@ class LiveAudioService {
 
     switch (type) {
       case 'ready':
+        _connected = true;
         _emitMessage('Llamada en vivo conectada.');
         break;
       case 'audio':
@@ -161,6 +192,18 @@ class LiveAudioService {
         break;
       case 'complete':
         _emitState(LiveAudioState.listening);
+        break;
+      case 'input_transcript':
+        final text = (message['text'] as String? ?? '').trim();
+        if (text.isNotEmpty) {
+          _emitMessage('Tú: $text');
+        }
+        break;
+      case 'output_transcript':
+        final text = (message['text'] as String? ?? '').trim();
+        if (text.isNotEmpty) {
+          _emitMessage(text);
+        }
         break;
       case 'error':
         _emitMessage(
