@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:ubicasafe/core/app_theme.dart';
+import 'package:ubicasafe/data/risk_zones.dart';
+import 'package:ubicasafe/services/api_service.dart';
 
 class UbicacionTiempoReal extends StatefulWidget {
   const UbicacionTiempoReal({super.key});
@@ -22,6 +25,7 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
   String _errorMessage = '';
   String? _selectedAvatar;
   StreamSubscription<Position>? _positionSubscription;
+  List<RiskZone> _riskZones = RiskMapData.zones;
 
   final List<String> _avatars = [
     'assets/icons/avatar1.png',
@@ -50,6 +54,31 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
   }
 
   void _createPersonIcon() {}
+
+  Future<void> _loadRiskZones() async {
+    final zones = await ApiService().getRiskZones();
+    if (!mounted || zones.isEmpty) return;
+    setState(() {
+      _riskZones = zones;
+    });
+  }
+
+  ll.LatLng _point(LatLng point) {
+    return ll.LatLng(point.latitude, point.longitude);
+  }
+
+  List<fm.CircleMarker> get _riskCircles {
+    return _riskZones.map((zone) {
+      return fm.CircleMarker(
+        point: _point(zone.position),
+        radius: zone.radiusMeters,
+        useRadiusInMeter: true,
+        color: zone.color.withValues(alpha: 0.22),
+        borderColor: zone.color.withValues(alpha: 0.78),
+        borderStrokeWidth: 2,
+      );
+    }).toList();
+  }
 
   Future<void> _startLocationService() async {
     setState(() {
@@ -82,6 +111,7 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
       return;
     }
 
+    await _loadRiskZones();
     await _getCurrentLocation();
   }
 
@@ -397,6 +427,48 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.example.ubicasafe',
           retinaMode: fm.RetinaMode.isHighDensity(context),
+        ),
+        fm.PolygonLayer(
+          polygons: [
+            fm.Polygon(
+              points: RiskMapData.elAltoBounds.map(_point).toList(),
+              color: AppColors.accentBlue.withValues(alpha: 0.05),
+              borderColor: AppColors.accentBlue.withValues(alpha: 0.38),
+              borderStrokeWidth: 2,
+            ),
+          ],
+        ),
+        fm.CircleLayer(circles: _riskCircles),
+        fm.MarkerLayer(
+          markers: _riskZones.map((zone) {
+            return fm.Marker(
+              point: _point(zone.position),
+              width: 26,
+              height: 26,
+              child: Tooltip(
+                message: '${zone.name} - Riesgo ${zone.label}',
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: zone.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: zone.color.withValues(alpha: 0.45),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.warning_rounded,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
         fm.MarkerLayer(
           markers: [
