@@ -479,13 +479,20 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
-                      _LanguageSwitch(
-                        value: _assistantLanguage,
-                        onChanged: _setAssistantLanguage,
-                      ),
                       const SizedBox(height: 10),
-                      _TimerBadge(label: _elapsedLabel),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 10,
+                        runSpacing: 8,
+                        children: [
+                          _TimerBadge(label: _elapsedLabel),
+                          _LanguageSwitch(
+                            value: _assistantLanguage,
+                            onChanged: _setAssistantLanguage,
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       _VoiceOrb(
                         controller: _voiceController,
@@ -682,16 +689,19 @@ class _LanguageSwitch extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const SizedBox(width: 2),
           _LanguageOption(
-            label: 'Español',
+            label: 'ES',
             selected: value == 'es',
             onTap: () => onChanged('es'),
           ),
+          const SizedBox(width: 2),
           _LanguageOption(
-            label: 'Aymara',
+            label: 'AY',
             selected: value == 'ay',
             onTap: () => onChanged('ay'),
           ),
+          const SizedBox(width: 2),
         ],
       ),
     );
@@ -724,7 +734,7 @@ class _LanguageOption extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           child: Text(
             label,
             style: AppTextStyles.caption.copyWith(
