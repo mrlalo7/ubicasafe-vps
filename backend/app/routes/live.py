@@ -84,7 +84,6 @@ async def live_voice(websocket: WebSocket) -> None:
         "output_audio_transcription": {},
         "system_instruction": live_context,
         "temperature": 0.55,
-        "thinking_config": {"thinking_level": "minimal"},
         "speech_config": {
             "voice_config": {
                 "prebuilt_voice_config": {
