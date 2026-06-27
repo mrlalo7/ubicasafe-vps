@@ -126,36 +126,44 @@ async def live_voice(websocket: WebSocket) -> None:
                         break
 
             async def send_to_client() -> None:
-                async for response in session.receive():
-                    server_content = response.server_content
-                    if server_content is None:
-                        continue
-
-                    if getattr(server_content, "interrupted", False):
-                        await _send_json(websocket, {"type": "interrupted"})
-
-                    if getattr(server_content, "generation_complete", False):
-                        await _send_json(websocket, {"type": "complete"})
-
-                    model_turn = server_content.model_turn
-                    if model_turn is None:
-                        continue
-
-                    for part in model_turn.parts:
-                        inline_data = part.inline_data
-                        if inline_data is None:
+                while True:
+                    received_any = False
+                    async for response in session.receive():
+                        received_any = True
+                        server_content = response.server_content
+                        if server_content is None:
                             continue
-                        await _send_json(
-                            websocket,
-                            {
-                                "type": "audio",
-                                "mimeType": inline_data.mime_type
-                                or "audio/pcm;rate=24000",
-                                "data": base64.b64encode(
-                                    inline_data.data
-                                ).decode("ascii"),
-                            },
-                        )
+
+                        if getattr(server_content, "interrupted", False):
+                            await _send_json(websocket, {"type": "interrupted"})
+
+                        if getattr(server_content, "generation_complete", False):
+                            await _send_json(websocket, {"type": "complete"})
+
+                        model_turn = server_content.model_turn
+                        if model_turn is None:
+                            continue
+
+                        for part in model_turn.parts:
+                            inline_data = part.inline_data
+                            if inline_data is None:
+                                continue
+                            await _send_json(
+                                websocket,
+                                {
+                                    "type": "audio",
+                                    "mimeType": inline_data.mime_type
+                                    or "audio/pcm;rate=24000",
+                                    "data": base64.b64encode(
+                                        inline_data.data
+                                    ).decode("ascii"),
+                                },
+                            )
+
+                    # Some SDK versions end a receive iterator after a model turn.
+                    # Keep the websocket/session open and wait for the next turn.
+                    if not received_any:
+                        await asyncio.sleep(0.05)
 
             tasks = [
                 asyncio.create_task(receive_from_client()),
