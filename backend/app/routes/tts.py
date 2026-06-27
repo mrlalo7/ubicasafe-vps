@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import socket
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from fastapi import APIRouter, HTTPException
@@ -65,7 +68,7 @@ def _audio_data_from_content(content: object) -> str | None:
 
 
 def _extract_audio_base64(payload: dict) -> str | None:
-    """Support likely response shapes from the Interactions API."""
+    """Support response shapes returned by Gemini TTS APIs."""
     audio_data = _audio_data_from_content(payload)
     if audio_data:
         return audio_data
@@ -91,28 +94,40 @@ def _extract_audio_base64(payload: dict) -> str | None:
 
 
 def _generate_tts_audio(text: str) -> str:
-    """Generate base64 PCM audio through Gemini Interactions TTS."""
+    """Generate base64 PCM audio through Gemini generateContent TTS."""
     prompt = (
-        "Read this in Spanish with a natural, warm, calm female assistant voice. "
+        "Say in Spanish with a natural, warm, calm female assistant voice. "
         "Use a Bolivian or neutral Latin American accent, friendly but serious, "
         "with clear pronunciation and a moderate pace. Do not add words.\n\n"
         f"{text}"
     )
     body = {
-        "model": settings.tts_model,
-        "input": prompt,
-        "response_format": {"type": "audio"},
-        "generation_config": {
-            "speech_config": [
-                {
-                    "voice": settings.live_voice_name,
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt,
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": {
+                        "voiceName": settings.live_voice_name,
+                    }
                 }
-            ]
+            },
         },
+        "model": settings.tts_model,
     }
 
+    encoded_model = urllib.parse.quote(settings.tts_model, safe="")
     request = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/interactions",
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{encoded_model}:generateContent",
         data=json.dumps(body).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
@@ -121,18 +136,60 @@ def _generate_tts_audio(text: str) -> str:
         method="POST",
     )
 
+    started_at = time.monotonic()
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(
+            request,
+            timeout=settings.tts_timeout_seconds,
+        ) as response:
+            raw_body = response.read().decode("utf-8")
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            logger.info(
+                "Gemini TTS success model=%s voice=%s status=%s elapsed_ms=%d",
+                settings.tts_model,
+                settings.live_voice_name,
+                response.status,
+                elapsed_ms,
+            )
+            payload = json.loads(raw_body)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        logger.warning("Gemini TTS HTTP error %s: %s", exc.code, detail)
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        logger.warning(
+            "Gemini TTS HTTP error model=%s voice=%s status=%s elapsed_ms=%d body=%s",
+            settings.tts_model,
+            settings.live_voice_name,
+            exc.code,
+            elapsed_ms,
+            detail,
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Gemini TTS no pudo generar audio ({exc.code}).",
         ) from exc
+    except (TimeoutError, socket.timeout, urllib.error.URLError) as exc:
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        logger.warning(
+            "Gemini TTS timeout/network error model=%s voice=%s elapsed_ms=%d "
+            "timeout_seconds=%d error=%r",
+            settings.tts_model,
+            settings.live_voice_name,
+            elapsed_ms,
+            settings.tts_timeout_seconds,
+            exc,
+        )
+        raise HTTPException(
+            status_code=504,
+            detail="Gemini TTS tardó demasiado o no respondió.",
+        ) from exc
     except Exception as exc:
-        logger.exception("Gemini TTS request failed")
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        logger.exception(
+            "Gemini TTS request failed model=%s voice=%s elapsed_ms=%d",
+            settings.tts_model,
+            settings.live_voice_name,
+            elapsed_ms,
+        )
         raise HTTPException(
             status_code=502,
             detail="No se pudo conectar con Gemini TTS.",

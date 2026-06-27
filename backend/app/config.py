@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     generation_model: str = "gemini-2.5-flash"
     live_model: str = "gemini-3.1-flash-live-preview"
     tts_model: str = "gemini-3.1-flash-tts-preview"
+    tts_timeout_seconds: int = 12
     live_voice_name: str = "Aoede"
 
     # ── CORS ──────────────────────────────────────────────────────────
