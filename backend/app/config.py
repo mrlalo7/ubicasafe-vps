@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # For the current MVP/test deployment, Flutter Web may be served from
     # localhost, 0.0.0.0, a LAN IP, or a temporary dev-server host.
     cors_origins: str = "*"
+    cors_origin_regex: str = r"https?://.*"
 
     # ── Rate limiting ─────────────────────────────────────────────────
     rate_limit: str = "30/minute"
