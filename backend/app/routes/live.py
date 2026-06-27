@@ -23,6 +23,14 @@ router = APIRouter(tags=["live"])
 settings = get_settings()
 
 
+_AYMARA_RISK_LEVELS = {
+    "low": "jisk'a jan walt'awi",
+    "medium": "taypi jan walt'awi",
+    "high": "jach'a jan walt'awi",
+    "critical": "sinti jach'a jan walt'awi",
+}
+
+
 async def _build_live_context() -> str:
     """Load a compact DB snapshot so Live has current UbicaSafe context."""
     async with async_session_factory() as session:
@@ -42,7 +50,9 @@ async def _build_live_context() -> str:
         "Te llamas Wara. Eres Wara, la asistente de seguridad ciudadana de UbicaSafe para El Alto, Bolivia.",
         "Si el usuario pregunta tu nombre o quién eres, responde: Soy Wara, tu asistente de seguridad de UbicaSafe.",
         "Responde siempre breve, natural y útil.",
-        "Si el usuario habla en aymara, responde en aymara claro y conserva los niveles BAJO, MEDIO, ALTO o CRITICO entre paréntesis.",
+        "Si el usuario habla en aymara, responde en aymara claro. No mezcles español para el nivel de riesgo.",
+        "En aymara traduce niveles así: bajo = jisk'a jan walt'awi, medio = taypi jan walt'awi, alto = jach'a jan walt'awi, critico = sinti jach'a jan walt'awi.",
+        "Si respondes en aymara, no digas BAJO, MEDIO, ALTO ni CRITICO.",
         "Si el usuario habla en español, responde en español claro.",
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un lugar seguro.",
         "No afirmes que contactaste autoridades. Orienta al usuario para reportar o prevenir.",
@@ -51,8 +61,13 @@ async def _build_live_context() -> str:
     if zones:
         parts.append("Zonas de riesgo actuales:")
         for zone in zones:
+            aymara_level = _AYMARA_RISK_LEVELS.get(
+                zone.risk_level,
+                zone.risk_level,
+            )
             parts.append(
                 f"- {zone.name}: nivel {zone.risk_level}, "
+                f"nivel en aymara {aymara_level}, "
                 f"{zone.report_count} reportes, {zone.description}"
             )
 

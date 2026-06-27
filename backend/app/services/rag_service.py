@@ -63,6 +63,13 @@ RISK_LEVEL_LABELS = {
     "critical": "CRITICO",
 }
 
+AYMARA_RISK_LEVEL_LABELS = {
+    "low": "jisk'a jan walt'awi",
+    "medium": "taypi jan walt'awi",
+    "high": "jach'a jan walt'awi",
+    "critical": "sinti jach'a jan walt'awi",
+}
+
 
 def _query_tokens(question: str) -> list[str]:
     """Return relevant lowercase tokens from a user question."""
@@ -92,9 +99,14 @@ def _merge_documents(primary: list[dict], secondary: list[dict]) -> list[dict]:
     return merged
 
 
-def risk_level_label(value: str | None) -> str:
-    """Return a user-facing Spanish label for a stored risk level."""
+def risk_level_label(value: str | None, language: str = "es") -> str:
+    """Return a user-facing risk label for a stored risk level."""
     normalized = (value or "").strip().lower()
+    if language == "ay":
+        return AYMARA_RISK_LEVEL_LABELS.get(
+            normalized,
+            normalized or "jan qhananchata",
+        )
     return RISK_LEVEL_LABELS.get(normalized, normalized.upper() or "NO ESPECIFICADO")
 
 
@@ -257,6 +269,7 @@ async def search_zones_by_text(
 def build_rag_context(
     reports: list[dict],
     zones: list[dict],
+    language: str = "es",
 ) -> str:
     """Format retrieved documents into context for the LLM prompt."""
     parts: list[str] = []
@@ -265,7 +278,7 @@ def build_rag_context(
         parts.append("=== ZONAS DE RIESGO RELEVANTES ===")
         for i, z in enumerate(zones, 1):
             parts.append(
-                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} — "
+                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'), language)} — "
                 f"Radio: {z['radius_meters']:.0f}m — "
                 f"Reportes registrados: {z.get('report_count', 0)} — "
                 f"{z['description']}"
@@ -296,6 +309,7 @@ async def generate_rag_response(
     question: str,
     context: str,
     recent_messages: list[str] | None = None,
+    language: str = "es",
 ) -> str:
     """Call Gemini with the RAG-enriched prompt.
 
@@ -303,21 +317,32 @@ async def generate_rag_response(
     section feeds it real data so it does not hallucinate statistics.
     """
 
+    language_instruction = (
+        "Responde en aymara claro. No mezcles español para el nivel de riesgo. "
+        "Traduce los niveles así: low/jisk'a jan walt'awi, "
+        "medium/taypi jan walt'awi, high/jach'a jan walt'awi, "
+        "critical/sinti jach'a jan walt'awi. "
+        "No escribas BAJO, MEDIO, ALTO ni CRITICO cuando respondas en aymara. "
+        if language == "ay"
+        else "Respondes en español claro, breve y útil. "
+    )
+
     system_instruction = (
         "Te llamas Wara. Eres Wara, la asistente de seguridad ciudadana "
         "de UbicaSafe para El Alto y La Paz, Bolivia. "
         "Si el usuario pregunta tu nombre o quién eres, responde de forma "
         "directa: Soy Wara, tu asistente de seguridad de UbicaSafe. "
-        "Respondes en español claro, breve y útil. "
+        f"{language_instruction}"
         "IMPORTANTE: Basa tus respuestas en los datos reales proporcionados "
         "en la sección CONTEXTO. No inventes estadísticas ni reportes. "
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un "
         "lugar seguro. "
         "No uses Markdown: no escribas asteriscos, negritas, listas con *, "
         "tablas ni encabezados. "
-        "Cuando menciones niveles de riesgo, usa solo estas etiquetas en "
-        "español: BAJO, MEDIO, ALTO o CRITICO. Nunca respondas LOW, MEDIUM, "
-        "HIGH ni CRITICAL. "
+        "Nunca respondas LOW, MEDIUM, HIGH ni CRITICAL. "
+        "En español usa BAJO, MEDIO, ALTO o CRITICO. "
+        "En aymara usa jisk'a jan walt'awi, taypi jan walt'awi, "
+        "jach'a jan walt'awi o sinti jach'a jan walt'awi. "
         "Guía al usuario para reportar, consultar riesgo o recibir "
         "consejos preventivos."
     )
@@ -358,6 +383,7 @@ async def rag_pipeline(
     session: AsyncSession,
     question: str,
     recent_messages: list[str] | None = None,
+    language: str = "es",
 ) -> dict:
     """Full RAG pipeline: embed → search → build context → generate.
 
@@ -410,16 +436,22 @@ async def rag_pipeline(
             warnings.append("zone_text_search_failed")
 
     # 3. Build RAG context from retrieved documents
-    context = build_rag_context(reports, zones)
+    context = build_rag_context(reports, zones, language)
 
     # 4. Generate response with Gemini
-    answer = await generate_rag_response(question, context, recent_messages)
+    answer = await generate_rag_response(
+        question,
+        context,
+        recent_messages,
+        language,
+    )
 
     return {
         "answer": answer,
         "sources": {
             "reports_used": len(reports),
             "zones_used": len(zones),
+            "language": language,
             "warnings": warnings,
         },
     }
