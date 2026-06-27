@@ -42,11 +42,9 @@ class GeminiService {
       return ragResponse.answer;
     }
 
-    // Solo recurre al fallback local de Gemini si el backend de la VPS está caído o inaccesible (error de red)
-    return sendSafetyMessage(
-      message: message,
-      recentMessages: recentMessages,
-    );
+    // Gemini debe vivir en el backend/RAG. En Flutter no pedimos API key para
+    // evitar exponer secretos en la app y para que siempre use datos reales.
+    return 'No pude conectar con el backend de UbicaSafe. Revisa la conexión a internet, CORS o que la VPS esté disponible.';
   }
 
   Future<String> sendSafetyMessage({

@@ -30,7 +30,9 @@ class Settings(BaseSettings):
 
     # ── CORS ──────────────────────────────────────────────────────────
     # TODO(security): Restrict CORS_ORIGINS to specific trusted domains in production.
-    cors_origins: str = "http://localhost:3000,http://localhost:8080"
+    # For the current MVP/test deployment, Flutter Web may be served from
+    # localhost, 0.0.0.0, a LAN IP, or a temporary dev-server host.
+    cors_origins: str = "*"
 
     # ── Rate limiting ─────────────────────────────────────────────────
     rate_limit: str = "30/minute"
