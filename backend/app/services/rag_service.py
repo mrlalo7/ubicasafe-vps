@@ -39,12 +39,57 @@ STOPWORDS = {
     "zona",
 }
 
+REPORT_QUERY_WORDS = {
+    "denuncia",
+    "denuncias",
+    "incidente",
+    "incidentes",
+    "reciente",
+    "recientes",
+    "reporte",
+    "reportes",
+    "robo",
+    "robos",
+    "ultimo",
+    "ultimos",
+    "último",
+    "últimos",
+}
+
 RISK_LEVEL_LABELS = {
     "low": "BAJO",
     "medium": "MEDIO",
     "high": "ALTO",
     "critical": "CRITICO",
 }
+
+
+def _query_tokens(question: str) -> list[str]:
+    """Return relevant lowercase tokens from a user question."""
+    return [
+        token
+        for token in re.findall(r"[a-záéíóúñ0-9]+", question.lower())
+        if len(token) > 3 and token not in STOPWORDS
+    ]
+
+
+def _looks_like_report_query(question: str) -> bool:
+    tokens = set(_query_tokens(question))
+    return bool(tokens & REPORT_QUERY_WORDS)
+
+
+def _merge_documents(primary: list[dict], secondary: list[dict]) -> list[dict]:
+    """Merge DB rows without duplicating ids, preserving order."""
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for item in [*primary, *secondary]:
+        item_id = str(item.get("id", ""))
+        if item_id and item_id in seen:
+            continue
+        if item_id:
+            seen.add(item_id)
+        merged.append(item)
+    return merged
 
 
 def risk_level_label(value: str | None) -> str:
@@ -85,6 +130,57 @@ async def search_similar_reports(
     return [dict(row) for row in rows]
 
 
+async def search_reports_by_text(
+    session: AsyncSession,
+    question: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Find recent reports by text/location, including rows without embeddings."""
+    tokens = [
+        token for token in _query_tokens(question) if token not in REPORT_QUERY_WORDS
+    ]
+
+    params: dict[str, object] = {"limit": limit}
+    where_clause = ""
+
+    if tokens:
+        conditions = []
+        for index, token in enumerate(tokens[:6]):
+            key = f"report_term_{index}"
+            params[key] = f"%{token}%"
+            conditions.append(
+                f"""(
+                    LOWER(location_text) LIKE :{key}
+                    OR LOWER(description) LIKE :{key}
+                    OR LOWER(report_type) LIKE :{key}
+                    OR LOWER(violence_level) LIKE :{key}
+                )"""
+            )
+        where_clause = f"WHERE {' OR '.join(conditions)}"
+    elif not _looks_like_report_query(question):
+        return []
+
+    result = await session.execute(
+        sql_text(
+            f"""
+            SELECT
+                id, report_type, location_text, description,
+                violence_level, had_injuries, had_weapons, weapon_type,
+                incident_date, latitude, longitude,
+                0 AS similarity
+            FROM reports
+            {where_clause}
+            ORDER BY incident_date DESC, created_at DESC
+            LIMIT :limit
+            """
+        ),
+        params,
+    )
+
+    rows = result.mappings().all()
+    return [dict(row) for row in rows]
+
+
 async def search_similar_zones(
     session: AsyncSession,
     query_embedding: list[float],
@@ -119,11 +215,7 @@ async def search_zones_by_text(
     limit: int = 3,
 ) -> list[dict]:
     """Fallback zone search when embeddings are missing or unavailable."""
-    tokens = [
-        token
-        for token in re.findall(r"[a-záéíóúñ0-9]+", question.lower())
-        if len(token) > 3 and token not in STOPWORDS
-    ]
+    tokens = _query_tokens(question)
     if not tokens:
         return []
 
@@ -296,6 +388,18 @@ async def rag_pipeline(
             await session.rollback()
             logger.exception("Vector search for risk zones failed")
             warnings.append("zone_vector_search_failed")
+
+    try:
+        text_reports = await search_reports_by_text(session, question, limit=5)
+        if text_reports:
+            reports = _merge_documents(text_reports, reports)[:8]
+    except Exception:
+        await session.rollback()
+        logger.exception("Text search for reports failed")
+        warnings.append("report_text_search_failed")
+
+    if not reports and _looks_like_report_query(question):
+        warnings.append("no_matching_reports_found")
 
     if not zones:
         try:
