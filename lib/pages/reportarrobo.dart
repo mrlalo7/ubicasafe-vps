@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:ubicasafe/core/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ubicasafe/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
 class ReportarRobo extends StatefulWidget {
@@ -14,6 +15,8 @@ class ReportarRobo extends StatefulWidget {
 
 class _ReportarRoboState extends State<ReportarRobo>
     with SingleTickerProviderStateMixin {
+  static const String _correoReportes = 'ubicasafeapp@gmail.com';
+
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
   final TextEditingController _descripcionController = TextEditingController();
@@ -385,7 +388,7 @@ class _ReportarRoboState extends State<ReportarRobo>
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
                         color: selected
-                            ? entry.value.withOpacity(0.2)
+                            ? entry.value.withValues(alpha: 0.2)
                             : AppColors.glassWhite,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
@@ -499,7 +502,7 @@ class _ReportarRoboState extends State<ReportarRobo>
           Text(label, style: AppTextStyles.label),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
-            value: value,
+            initialValue: value,
             dropdownColor: AppColors.bgCard,
             style: AppTextStyles.body.copyWith(
               color: AppColors.textPrimary,
@@ -679,7 +682,7 @@ class _ReportarRoboState extends State<ReportarRobo>
               height: 22,
               decoration: BoxDecoration(
                 color: value
-                    ? accentColor.withOpacity(0.2)
+                    ? accentColor.withValues(alpha: 0.2)
                     : AppColors.glassWhite,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
@@ -825,18 +828,39 @@ class _ReportarRoboState extends State<ReportarRobo>
 
       if (saved) {
         await _cargarEstadisticas();
-        _mostrarDialogoExito();
+        final correoAbierto = await _abrirCorreoReporte();
+        if (!mounted) return;
+        _mostrarDialogoExito(correoAbierto: correoAbierto);
       } else {
         await _guardarReporteSilencioso();
+        final correoAbierto = await _abrirCorreoReporte();
         if (!mounted) return;
-        _mostrarDialogoFalloBackend();
+        _mostrarDialogoFalloBackend(correoAbierto: correoAbierto);
       }
     } catch (_) {
       await _guardarReporteSilencioso();
+      final correoAbierto = await _abrirCorreoReporte();
       if (!mounted) return;
-      _mostrarDialogoFalloBackend();
+      _mostrarDialogoFalloBackend(correoAbierto: correoAbierto);
     } finally {
       if (mounted) setState(() => _registrandoReporte = false);
+    }
+  }
+
+  Future<bool> _abrirCorreoReporte() async {
+    final subject = Uri.encodeComponent('Reporte de robo - UbicaSafe');
+    final body = Uri.encodeComponent(_contenidoReporte);
+    final mailtoUrl = Uri.parse(
+      'mailto:$_correoReportes?subject=$subject&body=$body',
+    );
+
+    try {
+      if (await canLaunchUrl(mailtoUrl)) {
+        return launchUrl(mailtoUrl, mode: LaunchMode.externalApplication);
+      }
+      return launchUrl(mailtoUrl, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
     }
   }
 
@@ -899,7 +923,7 @@ Este reporte fue generado automáticamente por UbicaSafe.
     return contenido;
   }
 
-  void _mostrarDialogoFalloBackend() {
+  void _mostrarDialogoFalloBackend({required bool correoAbierto}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -916,7 +940,9 @@ Este reporte fue generado automáticamente por UbicaSafe.
           ],
         ),
         content: Text(
-          'No pudimos conectar con el servidor. Guardamos una copia local del reporte para que no pierdas la información.',
+          correoAbierto
+              ? 'No pudimos conectar con el servidor. Guardamos una copia local y abrimos tu correo para enviarlo a $_correoReportes.'
+              : 'No pudimos conectar con el servidor. Guardamos una copia local del reporte para que no pierdas la información.',
           style: AppTextStyles.body.copyWith(
             fontSize: 14,
             color: AppColors.textSecondary,
@@ -935,7 +961,7 @@ Este reporte fue generado automáticamente por UbicaSafe.
     );
   }
 
-  void _mostrarDialogoExito() {
+  void _mostrarDialogoExito({required bool correoAbierto}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -952,7 +978,9 @@ Este reporte fue generado automáticamente por UbicaSafe.
           ],
         ),
         content: Text(
-          'Tu reporte fue registrado en el backend de UbicaSafe y ya puede alimentar estadísticas y consultas de IA.',
+          correoAbierto
+              ? 'Tu reporte fue registrado en el backend de UbicaSafe para estadísticas/RAG y también se abrió el correo para enviarlo a $_correoReportes.'
+              : 'Tu reporte fue registrado en el backend de UbicaSafe para estadísticas/RAG. No se pudo abrir el correo automáticamente.',
           style: AppTextStyles.body.copyWith(
             fontSize: 14,
             color: AppColors.textSecondary,

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -17,6 +18,7 @@ import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
 import 'package:ubicasafe/pages/ubicaciontiemporeal.dart';
 import 'package:ubicasafe/services/api_service.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:url_launcher/url_launcher.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -30,20 +32,6 @@ class _MenuScreenState extends State<MenuScreen> {
   LatLng _currentPosition = RiskMapData.defaultCenter;
   List<RiskZone> _zones = RiskMapData.zones;
   bool _usingDeviceLocation = false;
-  bool _usingBackendZones = false;
-  GoogleMapController? _mapController;
-
-  static const _mapStyle = '''
-  [
-    {"elementType":"geometry","stylers":[{"color":"#1f2a3a"}]},
-    {"elementType":"labels.text.fill","stylers":[{"color":"#9ca5b3"}]},
-    {"elementType":"labels.text.stroke","stylers":[{"color":"#1f2a3a"}]},
-    {"featureType":"road","elementType":"geometry","stylers":[{"color":"#38414e"}]},
-    {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#212a37"}]},
-    {"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]},
-    {"featureType":"poi","stylers":[{"visibility":"off"}]}
-  ]
-  ''';
 
   RiskZone get _activeZone =>
       RiskMapData.effectiveZoneFor(_currentPosition, source: _zones);
@@ -61,7 +49,6 @@ class _MenuScreenState extends State<MenuScreen> {
     if (!mounted || zones.isEmpty) return;
     setState(() {
       _zones = zones;
-      _usingBackendZones = true;
     });
   }
 
@@ -88,7 +75,6 @@ class _MenuScreenState extends State<MenuScreen> {
         _currentPosition = latLng;
         _usingDeviceLocation = true;
       });
-      _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
     } catch (_) {
       // El home sigue funcionando con el centro real de referencia de El Alto.
     }
@@ -128,11 +114,6 @@ class _MenuScreenState extends State<MenuScreen> {
                       _MapPreview(
                         currentPosition: _currentPosition,
                         zones: _zones,
-                        onMapCreated: (controller) {
-                          _mapController = controller;
-                        },
-                        mapStyle: _mapStyle,
-                        usingBackendZones: _usingBackendZones,
                         onOpen: () => _open(const MapaRiesgo()),
                       ),
                       const SizedBox(height: 18),
@@ -186,7 +167,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 width: 48,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -280,7 +261,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
+                    color: color.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: color, size: 20),
@@ -620,45 +601,34 @@ class _MapPreview extends StatelessWidget {
   const _MapPreview({
     required this.currentPosition,
     required this.zones,
-    required this.onMapCreated,
-    required this.mapStyle,
-    required this.usingBackendZones,
     required this.onOpen,
   });
 
   final LatLng currentPosition;
   final List<RiskZone> zones;
-  final ValueChanged<GoogleMapController> onMapCreated;
-  final String mapStyle;
-  final bool usingBackendZones;
   final VoidCallback onOpen;
 
-  Set<Circle> get _circles {
-    return zones.map((zone) {
-      return Circle(
-        circleId: CircleId(zone.name),
-        center: zone.position,
-        radius: zone.radiusMeters,
-        fillColor: zone.color.withValues(alpha: 0.24),
-        strokeColor: zone.color.withValues(alpha: 0.82),
-        strokeWidth: 2,
-      );
-    }).toSet();
+  ll.LatLng _point(LatLng point) {
+    return ll.LatLng(point.latitude, point.longitude);
   }
 
-  Set<Marker> get _markers {
-    return {
-      Marker(
-        markerId: const MarkerId('current_position'),
-        position: currentPosition,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: const InfoWindow(title: 'Ubicación de referencia'),
-      ),
-    };
+  List<fm.CircleMarker> get _circles {
+    return zones.map((zone) {
+      return fm.CircleMarker(
+        point: _point(zone.position),
+        radius: zone.radiusMeters,
+        useRadiusInMeter: true,
+        color: zone.color.withValues(alpha: 0.24),
+        borderColor: zone.color.withValues(alpha: 0.82),
+        borderStrokeWidth: 2,
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final center = _point(currentPosition);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
@@ -666,82 +636,105 @@ class _MapPreview extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: GoogleMap(
-                onMapCreated: onMapCreated,
-                style: mapStyle,
-                initialCameraPosition: CameraPosition(
-                  target: currentPosition,
-                  zoom: 12.8,
-                ),
-                circles: _circles,
-                markers: _markers,
-                polygons: {
-                  Polygon(
-                    polygonId: const PolygonId('el_alto_bounds'),
-                    points: RiskMapData.elAltoBounds,
-                    fillColor: AppColors.accentBlue.withValues(alpha: 0.06),
-                    strokeColor: AppColors.accentBlue.withValues(alpha: 0.45),
-                    strokeWidth: 2,
+              child: fm.FlutterMap(
+                key: ValueKey('${center.latitude},${center.longitude}'),
+                options: fm.MapOptions(
+                  initialCenter: center,
+                  initialZoom: 12.8,
+                  interactionOptions: const fm.InteractionOptions(
+                    flags: fm.InteractiveFlag.none,
                   ),
-                },
-                liteModeEnabled: true,
-                compassEnabled: false,
-                mapToolbarEnabled: false,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                rotateGesturesEnabled: false,
-                tiltGesturesEnabled: false,
-                scrollGesturesEnabled: false,
-                zoomGesturesEnabled: false,
-                onTap: (_) => onOpen(),
+                  onTap: (_, _) => onOpen(),
+                ),
+                children: [
+                  fm.TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.ubicasafe',
+                    retinaMode: fm.RetinaMode.isHighDensity(context),
+                  ),
+                  fm.PolygonLayer(
+                    polygons: [
+                      fm.Polygon(
+                        points: RiskMapData.elAltoBounds.map(_point).toList(),
+                        color: AppColors.accentBlue.withValues(alpha: 0.06),
+                        borderColor: AppColors.accentBlue.withValues(
+                          alpha: 0.45,
+                        ),
+                        borderStrokeWidth: 2,
+                      ),
+                    ],
+                  ),
+                  fm.CircleLayer(circles: _circles),
+                  fm.MarkerLayer(
+                    markers: [
+                      fm.Marker(
+                        point: center,
+                        width: 42,
+                        height: 42,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.accentBlue.withValues(alpha: 0.18),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.accentBlueLight,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.my_location_rounded,
+                            color: AppColors.accentBlueLight,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             Positioned(
               left: 12,
               right: 12,
-              bottom: 12,
-              child: Row(
-                children: [
-                  const Expanded(child: _Legend()),
-                  const SizedBox(width: 10),
-                  if (usingBackendZones) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.safeGreen.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.safeGreen.withValues(alpha: 0.45),
+              bottom: 22,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 360;
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: _Legend(compact: isCompact),
                         ),
                       ),
-                      child: Text(
-                        'VPS',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.safeGreen,
-                          fontWeight: FontWeight.w800,
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: 'Ver mapa',
+                        child: IconButton(
+                          onPressed: onOpen,
+                          icon: const Icon(
+                            Icons.open_in_full_rounded,
+                            size: 20,
+                          ),
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(44, 44),
+                            fixedSize: const Size(44, 44),
+                            backgroundColor: AppColors.bgSurface.withValues(
+                              alpha: 0.94,
+                            ),
+                            foregroundColor: AppColors.textPrimary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  ElevatedButton.icon(
-                    onPressed: onOpen,
-                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
-                    label: const Text('Ver mapa'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 46),
-                      backgroundColor: AppColors.bgSurface.withValues(
-                        alpha: 0.92,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                  ),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -962,7 +955,7 @@ class _RecommendationCarouselState extends State<_RecommendationCarousel> {
                       shape: BoxShape.circle,
                       color: _currentPage == index
                           ? Colors.cyanAccent
-                          : Colors.white.withOpacity(0.3),
+                          : Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -1281,23 +1274,26 @@ class _FeatureCard extends StatelessWidget {
 }
 
 class _Legend extends StatelessWidget {
-  const _Legend();
+  const _Legend({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      constraints: BoxConstraints(maxWidth: compact ? 268 : 286),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.bgSurface.withValues(alpha: 0.92),
+        color: AppColors.bgSurface.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(14),
         border: const Border.fromBorderSide(
           BorderSide(color: AppColors.glassBorder),
         ),
       ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
+      child: Wrap(
+        spacing: compact ? 6 : 10,
+        runSpacing: 7,
+        children: const [
           _LegendItem(color: AppColors.safeGreen, label: 'Bajo'),
           _LegendItem(color: AppColors.warningAmber, label: 'Medio'),
           _LegendItem(color: Color(0xFFFF8A00), label: 'Alto'),
@@ -1329,8 +1325,11 @@ class _LegendItem extends StatelessWidget {
           label,
           style: AppTextStyles.caption.copyWith(
             color: Colors.white,
+            fontSize: 10.5,
             fontWeight: FontWeight.w700,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.visible,
         ),
       ],
     );

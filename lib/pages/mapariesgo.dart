@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:ubicasafe/core/app_theme.dart';
 import 'package:ubicasafe/data/risk_zones.dart';
 import 'package:ubicasafe/pages/nivelesriesgo.dart';
@@ -16,94 +18,8 @@ class MapaRiesgo extends StatefulWidget {
 }
 
 class _MapaRiesgoState extends State<MapaRiesgo> {
-  GoogleMapController? _mapController;
-  final Set<Circle> _circulosRiesgo = {};
-  final Set<Polygon> _poligonosElAlto = {};
-  final Set<Marker> _markers = {};
+  final fm.MapController _mapController = fm.MapController();
   Position? _currentPosition;
-
-  // Estilo oscuro premium para Google Maps
-  final String _mapStyle = '''
-  [
-    {
-      "elementType": "geometry",
-      "stylers": [{"color": "#242f3e"}]
-    },
-    {
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#746855"}]
-    },
-    {
-      "elementType": "labels.text.stroke",
-      "stylers": [{"color": "#242f3e"}]
-    },
-    {
-      "featureType": "administrative.locality",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#d59563"}]
-    },
-    {
-      "featureType": "poi",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#d59563"}]
-    },
-    {
-      "featureType": "poi.park",
-      "elementType": "geometry",
-      "stylers": [{"color": "#263c3f"}]
-    },
-    {
-      "featureType": "poi.park",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#6b9a76"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "geometry",
-      "stylers": [{"color": "#38414e"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "geometry.stroke",
-      "stylers": [{"color": "#212a37"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#9ca5b3"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "geometry",
-      "stylers": [{"color": "#746855"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "geometry.stroke",
-      "stylers": [{"color": "#1f2835"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#f3d19c"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "geometry",
-      "stylers": [{"color": "#17263c"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#515c6d"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "labels.text.stroke",
-      "stylers": [{"color": "#17263c"}]
-    }
-  ]
-  ''';
 
   // LÍMITES EXTENDIDOS DE EL ALTO - CUBRIENDO TODOS LOS PUNTOS
   final List<LatLng> _limitesElAlto = [
@@ -207,9 +123,7 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
 
       _agregarMarcadorUbicacion();
 
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLng(LatLng(position.latitude, position.longitude)),
-      );
+      _mapController.move(ll.LatLng(position.latitude, position.longitude), 15);
     } catch (e) {
       _mostrarErrorUbicacion('Error al obtener la ubicación');
     }
@@ -217,23 +131,6 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
 
   void _agregarMarcadorUbicacion() {
     if (_currentPosition != null) {
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('mi_ubicacion'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure,
-          ),
-          infoWindow: const InfoWindow(
-            title: 'Mi Ubicación Actual',
-            snippet: 'Estás aquí',
-          ),
-          consumeTapEvents: true,
-        ),
-      );
       setState(() {});
     }
   }
@@ -266,46 +163,51 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
   }
 
   void _cargarZonasRiesgo() {
-    _circulosRiesgo.clear();
-
-    for (final zona in _zonasRiesgo) {
-      _circulosRiesgo.add(
-        Circle(
-          circleId: CircleId(zona.name),
-          center: zona.position,
-          radius: zona.radiusMeters,
-          fillColor: zona.color.withOpacity(0.25),
-          strokeColor: zona.color.withOpacity(0.8),
-          strokeWidth: 2,
-        ),
-      );
-    }
-
     setState(() {});
   }
 
-  void _cargarPoligonoElAlto() {
-    _poligonosElAlto.add(
-      Polygon(
-        polygonId: const PolygonId('el_alto_fondo'),
-        points: _limitesElAlto,
-        fillColor: AppColors.accentBlue.withOpacity(0.08),
-        strokeColor: Colors.transparent,
-        strokeWidth: 0,
-        geodesic: true,
-      ),
-    );
+  void _cargarPoligonoElAlto() {}
 
-    _poligonosElAlto.add(
-      Polygon(
-        polygonId: const PolygonId('el_alto_limites'),
-        points: _limitesElAlto,
-        fillColor: Colors.transparent,
-        strokeColor: AppColors.accentBlue.withOpacity(0.5),
-        strokeWidth: 2,
-        geodesic: true,
+  ll.LatLng _point(LatLng point) {
+    return ll.LatLng(point.latitude, point.longitude);
+  }
+
+  List<fm.CircleMarker> get _riskCircles {
+    return _zonasRiesgo.map((zona) {
+      return fm.CircleMarker(
+        point: _point(zona.position),
+        radius: zona.radiusMeters,
+        useRadiusInMeter: true,
+        color: zona.color.withValues(alpha: 0.25),
+        borderColor: zona.color.withValues(alpha: 0.8),
+        borderStrokeWidth: 2,
+      );
+    }).toList();
+  }
+
+  List<fm.Marker> get _mapMarkers {
+    final position = _currentPosition;
+    if (position == null) return const [];
+
+    return [
+      fm.Marker(
+        point: ll.LatLng(position.latitude, position.longitude),
+        width: 46,
+        height: 46,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.accentBlue.withValues(alpha: 0.18),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.accentBlueLight, width: 2),
+          ),
+          child: const Icon(
+            Icons.my_location_rounded,
+            color: AppColors.accentBlueLight,
+            size: 24,
+          ),
+        ),
       ),
-    );
+    ];
   }
 
   void _mostrarInfoZona(String nombreZona) {
@@ -449,29 +351,15 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
       ),
       body: Stack(
         children: [
-          GoogleMap(
-            onMapCreated: (controller) {
-              controller.setMapStyle(_mapStyle);
-              setState(() {
-                _mapController = controller;
-              });
-            },
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(-16.5000, -68.2000),
-              zoom: 13.0,
-            ),
-            circles: _circulosRiesgo,
-            polygons: _poligonosElAlto,
-            markers: _markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            compassEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            onTap: (LatLng position) {
-              for (final zona in _zonasRiesgo) {
-                final distancia = _calcularDistancia(
-                  position.latitude,
+          fm.FlutterMap(
+            mapController: _mapController,
+            options: fm.MapOptions(
+              initialCenter: const ll.LatLng(-16.5000, -68.2000),
+              initialZoom: 13.0,
+              onTap: (_, position) {
+                for (final zona in _zonasRiesgo) {
+                  final distancia = _calcularDistancia(
+                    position.latitude,
                   position.longitude,
                   zona.position.latitude,
                   zona.position.longitude,
@@ -480,9 +368,35 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
                 if (distancia <= zona.radiusMeters) {
                   _mostrarInfoZona(zona.name);
                   break;
+                  }
                 }
-              }
-            },
+              },
+            ),
+            children: [
+              fm.TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.ubicasafe',
+                retinaMode: fm.RetinaMode.isHighDensity(context),
+              ),
+              fm.PolygonLayer(
+                polygons: [
+                  fm.Polygon(
+                    points: _limitesElAlto.map(_point).toList(),
+                    color: AppColors.accentBlue.withValues(alpha: 0.08),
+                    borderColor: Colors.transparent,
+                    borderStrokeWidth: 0,
+                  ),
+                  fm.Polygon(
+                    points: _limitesElAlto.map(_point).toList(),
+                    color: Colors.transparent,
+                    borderColor: AppColors.accentBlue.withValues(alpha: 0.5),
+                    borderStrokeWidth: 2,
+                  ),
+                ],
+              ),
+              fm.CircleLayer(circles: _riskCircles),
+              fm.MarkerLayer(markers: _mapMarkers),
+            ],
           ),
 
           // Leyenda interactiva flotante
@@ -605,9 +519,7 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
             ),
             child: FloatingActionButton(
               onPressed: () {
-                _mapController?.animateCamera(
-                  CameraUpdate.newLatLng(const LatLng(-16.5000, -68.2000)),
-                );
+                _mapController.move(const ll.LatLng(-16.5000, -68.2000), 13);
               },
               backgroundColor: AppColors.accentBlue,
               heroTag: "btn_centro",

@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:ubicasafe/core/app_theme.dart';
-import 'package:ubicasafe/pages/menu.dart';
 
 class UbicacionTiempoReal extends StatefulWidget {
   const UbicacionTiempoReal({super.key});
@@ -14,95 +15,13 @@ class UbicacionTiempoReal extends StatefulWidget {
 }
 
 class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
-  GoogleMapController? _mapController;
+  final fm.MapController _mapController = fm.MapController();
   Position? _currentPosition;
   bool _isLoading = true;
   bool _showAvatarSelection = true;
   String _errorMessage = '';
   String? _selectedAvatar;
-
-  // Estilo oscuro premium para Google Maps
-  final String _mapStyle = '''
-  [
-    {
-      "elementType": "geometry",
-      "stylers": [{"color": "#242f3e"}]
-    },
-    {
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#746855"}]
-    },
-    {
-      "elementType": "labels.text.stroke",
-      "stylers": [{"color": "#242f3e"}]
-    },
-    {
-      "featureType": "administrative.locality",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#d59563"}]
-    },
-    {
-      "featureType": "poi",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#d59563"}]
-    },
-    {
-      "featureType": "poi.park",
-      "elementType": "geometry",
-      "stylers": [{"color": "#263c3f"}]
-    },
-    {
-      "featureType": "poi.park",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#6b9a76"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "geometry",
-      "stylers": [{"color": "#38414e"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "geometry.stroke",
-      "stylers": [{"color": "#212a37"}]
-    },
-    {
-      "featureType": "road",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#9ca5b3"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "geometry",
-      "stylers": [{"color": "#746855"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "geometry.stroke",
-      "stylers": [{"color": "#1f2835"}]
-    },
-    {
-      "featureType": "road.highway",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#f3d19c"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "geometry",
-      "stylers": [{"color": "#17263c"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "labels.text.fill",
-      "stylers": [{"color": "#515c6d"}]
-    },
-    {
-      "featureType": "water",
-      "elementType": "labels.text.stroke",
-      "stylers": [{"color": "#17263c"}]
-    }
-  ]
-  ''';
+  StreamSubscription<Position>? _positionSubscription;
 
   final List<String> _avatars = [
     'assets/icons/avatar1.png',
@@ -123,9 +42,6 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
     'assets/icons/avatar16.png',
   ];
 
-  final Set<Marker> _markers = {};
-  BitmapDescriptor? _personIcon;
-
   @override
   void initState() {
     super.initState();
@@ -133,73 +49,103 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
     _isLoading = false;
   }
 
-  void _createPersonIcon() async {
-    if (_selectedAvatar != null) {
-      try {
-        BitmapDescriptor icon = await BitmapDescriptor.fromAssetImage(
-          const ImageConfiguration(size: Size(40, 40)),
-          _selectedAvatar!,
-        );
-        setState(() {
-          _personIcon = icon;
-        });
-      } catch (e) {
-        setState(() {
-          _personIcon = BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure,
-          );
-        });
-      }
-    }
-  }
+  void _createPersonIcon() {}
 
   Future<void> _startLocationService() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
-    final status = await Permission.location.request();
-    if (status.isGranted) {
-      await _getCurrentLocation();
-    } else {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Permiso de ubicación denegado';
-        _showAvatarSelection = false;
-      });
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _showLocationError(
+        'Activa el GPS o la ubicación del dispositivo e intenta nuevamente.',
+      );
+      return;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      _showLocationError('Permiso de ubicación denegado.');
+      return;
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _showLocationError(
+        'El permiso de ubicación está bloqueado. Actívalo desde ajustes de la app.',
+      );
+      return;
+    }
+
+    await _getCurrentLocation();
+  }
+
+  void _showLocationError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _errorMessage = message;
+      _showAvatarSelection = false;
+    });
+  }
+
+  void _moveMapTo(Position position, {double zoom = 16}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.move(ll.LatLng(position.latitude, position.longitude), zoom);
+    });
+  }
+
+  Future<Position?> _getBestKnownPosition() async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 12),
+      );
+    } on TimeoutException {
+      return Geolocator.getLastKnownPosition();
+    } catch (_) {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) return lastKnown;
+      rethrow;
     }
   }
 
   Future<void> _getCurrentLocation() async {
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final position = await _getBestKnownPosition();
+      if (position == null) {
+        _showLocationError(
+          'No se pudo obtener tu ubicación. Sal al exterior o revisa el GPS.',
+        );
+        return;
+      }
 
+      if (!mounted) return;
       setState(() {
         _currentPosition = position;
         _isLoading = false;
+        _errorMessage = '';
         _showAvatarSelection = false;
-        _addMarker(position);
       });
 
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(position.latitude, position.longitude),
-          16.0,
-        ),
-      );
-
+      _moveMapTo(position);
       _startLocationUpdates();
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Error obteniendo ubicación';
-        _showAvatarSelection = false;
-      });
+      _showLocationError(
+        'Error obteniendo ubicación. Revisa permisos, GPS e intenta nuevamente.',
+      );
     }
   }
 
   void _startLocationUpdates() {
-    Geolocator.getPositionStream(
+    _positionSubscription?.cancel();
+    _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
@@ -208,26 +154,10 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
       if (mounted) {
         setState(() {
           _currentPosition = position;
-          _addMarker(position);
         });
+        _moveMapTo(position);
       }
-    });
-  }
-
-  void _addMarker(Position position) {
-    final marker = Marker(
-      markerId: const MarkerId('my_location'),
-      position: LatLng(position.latitude, position.longitude),
-      icon: _personIcon ??
-          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-      infoWindow: const InfoWindow(title: 'Tú estás aquí'),
-      anchor: const Offset(0.5, 0.5),
-    );
-
-    setState(() {
-      _markers.clear();
-      _markers.add(marker);
-    });
+    }, onError: (_) {});
   }
 
   Widget _buildAvatarSelection() {
@@ -309,15 +239,12 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
                 ),
                 const SizedBox(height: 16),
                 GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedAvatar = null;
-                      _personIcon = BitmapDescriptor.defaultMarkerWithHue(
-                        BitmapDescriptor.hueAzure,
-                      );
-                    });
-                    _startLocationService();
-                  },
+	                  onTap: () {
+	                    setState(() {
+	                      _selectedAvatar = null;
+	                    });
+	                    _startLocationService();
+	                  },
                   child: Text(
                     'Usar marcador por defecto',
                     style: AppTextStyles.body.copyWith(
@@ -387,12 +314,13 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
               ),
               child: FloatingActionButton(
                 onPressed: () {
-                  if (_currentPosition != null && _mapController != null) {
-                    _mapController!.animateCamera(
-                      CameraUpdate.newLatLngZoom(
-                        LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                        16.0,
+                  if (_currentPosition != null) {
+                    _mapController.move(
+                      ll.LatLng(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
                       ),
+                      16,
                     );
                   }
                 },
@@ -456,27 +384,108 @@ class _UbicacionTiempoRealState extends State<UbicacionTiempoReal> {
       return Center(child: Text('Ubicación no disponible', style: AppTextStyles.body));
     }
 
-    return GoogleMap(
-      onMapCreated: (controller) {
-        controller.setMapStyle(_mapStyle);
-        setState(() => _mapController = controller);
-      },
-      initialCameraPosition: CameraPosition(
-        target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        zoom: 16.0,
-      ),
-      markers: _markers,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-      compassEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
+    final position = ll.LatLng(
+      _currentPosition!.latitude,
+      _currentPosition!.longitude,
+    );
+
+    return fm.FlutterMap(
+      mapController: _mapController,
+      options: fm.MapOptions(initialCenter: position, initialZoom: 16),
+      children: [
+        fm.TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.example.ubicasafe',
+          retinaMode: fm.RetinaMode.isHighDensity(context),
+        ),
+        fm.MarkerLayer(
+          markers: [
+            fm.Marker(
+              point: position,
+              width: 76,
+              height: 76,
+              alignment: Alignment.center,
+              child: _UserLocationMarker(avatarPath: _selectedAvatar),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   @override
   void dispose() {
-    _mapController?.dispose();
+    _positionSubscription?.cancel();
     super.dispose();
+  }
+}
+
+class _UserLocationMarker extends StatelessWidget {
+  const _UserLocationMarker({required this.avatarPath});
+
+  final String? avatarPath;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 76,
+          height: 76,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.accentBlue.withValues(alpha: 0.10),
+          ),
+        ),
+        Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppColors.accentBlueLight.withValues(alpha: 0.55),
+              width: 2,
+            ),
+          ),
+        ),
+        Container(
+          width: 52,
+          height: 52,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppColors.bgSurface,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: AppShadows.blueGlow,
+          ),
+          child: avatarPath == null
+              ? const Icon(
+                  Icons.my_location_rounded,
+                  color: AppColors.accentBlueLight,
+                  size: 28,
+                )
+              : ClipOval(child: Image.asset(avatarPath!, fit: BoxFit.cover)),
+        ),
+        Positioned(
+          right: 9,
+          bottom: 10,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: AppColors.safeGreen,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.bgDark, width: 3),
+            ),
+            child: const Icon(
+              Icons.navigation_rounded,
+              color: Colors.white,
+              size: 12,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
