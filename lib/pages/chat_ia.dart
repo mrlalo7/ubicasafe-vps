@@ -426,7 +426,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
         .trim();
     if (cleanText.isEmpty) return;
 
-    final spokenByBackend = await _backendTtsService.speak(cleanText);
+    final spokenByBackend = await _backendTtsService.speak(
+      _voiceSummary(cleanText),
+    );
     if (spokenByBackend) {
       if (!mounted) return;
       setState(() {
@@ -445,6 +447,22 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       await _configureNaturalVoice();
     }
     await _tts.speak(cleanText);
+  }
+
+  String _voiceSummary(String text) {
+    const maxLength = 360;
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+
+    final clipped = normalized.substring(0, maxLength);
+    final lastSentence = clipped.lastIndexOf(RegExp(r'[.!?]'));
+    if (lastSentence > 160) {
+      return clipped.substring(0, lastSentence + 1);
+    }
+
+    final lastSpace = clipped.lastIndexOf(' ');
+    final safeEnd = lastSpace > 160 ? lastSpace : maxLength;
+    return '${clipped.substring(0, safeEnd).trim()}.';
   }
 
   String _localStatusFor(String input) {
