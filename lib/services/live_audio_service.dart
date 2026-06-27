@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -30,16 +29,12 @@ class LiveAudioService {
   WebSocketChannel? _channel;
   StreamSubscription<Uint8List>? _recordingSubscription;
   StreamSubscription? _socketSubscription;
-  final Queue<Uint8List> _audioQueue = Queue<Uint8List>();
+  final List<Uint8List> _turnAudioChunks = <Uint8List>[];
   bool _running = false;
   bool _connected = false;
   bool _playerReady = false;
-  bool _playerStreamStarted = false;
-  bool _flushingAudio = false;
-  int _bufferedAudioBytes = 0;
-
-  static const int _minBufferedAudioBytes = 16000;
-  static const int _maxBufferedAudioBytes = 96000;
+  int _turnAudioBytes = 0;
+  int _playbackGeneration = 0;
 
   Stream<LiveAudioState> get states => _stateController.stream;
   Stream<String> get messages => _messageController.stream;
@@ -183,7 +178,6 @@ class LiveAudioService {
     _channel = null;
     await _player.stopPlayer();
     _clearAudioBuffer();
-    _playerStreamStarted = false;
     _emitState(LiveAudioState.idle);
   }
 
@@ -204,55 +198,47 @@ class LiveAudioService {
     }
   }
 
-  Future<void> _ensurePlayerStream() async {
-    await _openPlayer();
-    if (!_playerStreamStarted || !_player.isPlaying) {
-      await _player.startPlayerFromStream(
-        codec: Codec.pcm16,
-        interleaved: true,
-        numChannels: 1,
-        sampleRate: 24000,
-        bufferSize: 8192,
-      );
-      _playerStreamStarted = true;
-    }
-  }
-
   void _enqueueAudio(Uint8List data) {
     if (data.isEmpty) return;
-
-    _audioQueue.add(data);
-    _bufferedAudioBytes += data.length;
-
-    while (_bufferedAudioBytes > _maxBufferedAudioBytes &&
-        _audioQueue.isNotEmpty) {
-      _bufferedAudioBytes -= _audioQueue.removeFirst().length;
-    }
-
-    if (_playerStreamStarted ||
-        _bufferedAudioBytes >= _minBufferedAudioBytes) {
-      unawaited(_flushAudioBuffer());
-    }
+    _turnAudioChunks.add(data);
+    _turnAudioBytes += data.length;
   }
 
-  Future<void> _flushAudioBuffer() async {
-    if (_flushingAudio) return;
-    _flushingAudio = true;
-    try {
-      await _ensurePlayerStream();
-      while (_audioQueue.isNotEmpty && _player.uint8ListSink != null) {
-        final chunk = _audioQueue.removeFirst();
-        _bufferedAudioBytes -= chunk.length;
-        _player.uint8ListSink?.add(chunk);
-      }
-    } finally {
-      _flushingAudio = false;
+  Future<void> _playBufferedTurnAudio() async {
+    if (_turnAudioChunks.isEmpty || _turnAudioBytes == 0) {
+      _emitState(LiveAudioState.listening);
+      return;
     }
+
+    final generation = ++_playbackGeneration;
+    final audio = Uint8List(_turnAudioBytes);
+    var offset = 0;
+    for (final chunk in _turnAudioChunks) {
+      audio.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+
+    _clearAudioBuffer();
+    await _openPlayer();
+    await _player.stopPlayer();
+    _emitState(LiveAudioState.speaking);
+
+    await _player.startPlayer(
+      fromDataBuffer: audio,
+      codec: Codec.pcm16,
+      sampleRate: 24000,
+      numChannels: 1,
+      whenFinished: () {
+        if (generation == _playbackGeneration) {
+          _emitState(LiveAudioState.listening);
+        }
+      },
+    );
   }
 
   void _clearAudioBuffer() {
-    _audioQueue.clear();
-    _bufferedAudioBytes = 0;
+    _turnAudioChunks.clear();
+    _turnAudioBytes = 0;
   }
 
   Future<void> _handleSocketMessage(dynamic raw) async {
@@ -271,16 +257,13 @@ class LiveAudioService {
         _emitState(LiveAudioState.speaking);
         break;
       case 'interrupted':
+        _playbackGeneration++;
         await _player.stopPlayer();
         _clearAudioBuffer();
-        _playerStreamStarted = false;
         _emitState(LiveAudioState.listening);
         break;
       case 'complete':
-        if (_audioQueue.isNotEmpty) {
-          await _flushAudioBuffer();
-        }
-        _emitState(LiveAudioState.listening);
+        unawaited(_playBufferedTurnAudio());
         break;
       case 'input_transcript':
         final text = (message['text'] as String? ?? '').trim();
