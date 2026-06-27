@@ -33,6 +33,8 @@ class LiveAudioService {
   bool _running = false;
   bool _connected = false;
   bool _playerReady = false;
+  bool _recorderActive = false;
+  bool _recorderPausedForPlayback = false;
   int _turnAudioBytes = 0;
   int _playbackGeneration = 0;
 
@@ -90,28 +92,7 @@ class LiveAudioService {
         },
       );
 
-      final stream = await _recorder.startStream(
-        const RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: 16000,
-          numChannels: 1,
-          echoCancel: true,
-          noiseSuppress: true,
-          autoGain: true,
-          streamBufferSize: 640,
-        ),
-      );
-
-      _recordingSubscription = stream.listen((chunk) {
-        if (muted) return;
-        _channel?.sink.add(
-          jsonEncode({
-            'type': 'audio',
-            'mimeType': 'audio/pcm;rate=16000',
-            'data': base64Encode(chunk),
-          }),
-        );
-      });
+      await _startRecorderStream();
 
       _emitMessage('Gemini Live está escuchando.');
       _emitState(LiveAudioState.listening);
@@ -123,6 +104,7 @@ class LiveAudioService {
       await _recordingSubscription?.cancel();
       _recordingSubscription = null;
       await _recorder.stop();
+      _recorderActive = false;
       await _channel?.sink.close();
       _channel = null;
     }
@@ -174,6 +156,8 @@ class LiveAudioService {
     await _socketSubscription?.cancel();
     _socketSubscription = null;
     await _recorder.stop();
+    _recorderActive = false;
+    _recorderPausedForPlayback = false;
     await _channel?.sink.close();
     _channel = null;
     await _player.stopPlayer();
@@ -198,6 +182,60 @@ class LiveAudioService {
     }
   }
 
+  Future<void> _startRecorderStream() async {
+    if (_recorderActive || !_running) return;
+
+    final stream = await _recorder.startStream(
+      const RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
+        echoCancel: true,
+        noiseSuppress: true,
+        autoGain: true,
+        streamBufferSize: 640,
+      ),
+    );
+
+    _recordingSubscription = stream.listen((chunk) {
+      if (muted || !_running) return;
+      _channel?.sink.add(
+        jsonEncode({
+          'type': 'audio',
+          'mimeType': 'audio/pcm;rate=16000',
+          'data': base64Encode(chunk),
+        }),
+      );
+    });
+    _recorderActive = true;
+    _recorderPausedForPlayback = false;
+  }
+
+  Future<void> _pauseRecorderForPlayback() async {
+    if (!_recorderActive) return;
+
+    _recorderPausedForPlayback = true;
+    await _recordingSubscription?.cancel();
+    _recordingSubscription = null;
+    await _recorder.stop();
+    _recorderActive = false;
+    try {
+      _channel?.sink.add(jsonEncode({'type': 'audio_stream_end'}));
+    } catch (_) {}
+  }
+
+  Future<void> _resumeRecorderAfterPlayback() async {
+    if (!_running || !_recorderPausedForPlayback || muted) return;
+
+    try {
+      await _startRecorderStream();
+      _emitState(LiveAudioState.listening);
+    } catch (error) {
+      _emitMessage('No pude reactivar el micrófono: $error');
+      _emitState(LiveAudioState.error);
+    }
+  }
+
   void _enqueueAudio(Uint8List data) {
     if (data.isEmpty) return;
     _turnAudioChunks.add(data);
@@ -206,10 +244,12 @@ class LiveAudioService {
 
   Future<void> _playBufferedTurnAudio() async {
     if (_turnAudioChunks.isEmpty || _turnAudioBytes == 0) {
+      await _resumeRecorderAfterPlayback();
       _emitState(LiveAudioState.listening);
       return;
     }
 
+    await _pauseRecorderForPlayback();
     final generation = ++_playbackGeneration;
     final audio = Uint8List(_turnAudioBytes);
     var offset = 0;
@@ -230,7 +270,7 @@ class LiveAudioService {
       numChannels: 1,
       whenFinished: () {
         if (generation == _playbackGeneration) {
-          _emitState(LiveAudioState.listening);
+          unawaited(_resumeRecorderAfterPlayback());
         }
       },
     );
@@ -252,6 +292,9 @@ class LiveAudioService {
         _emitMessage('Llamada en vivo conectada.');
         break;
       case 'audio':
+        if (_turnAudioChunks.isEmpty) {
+          await _pauseRecorderForPlayback();
+        }
         final data = base64Decode(message['data'] as String);
         _enqueueAudio(data);
         _emitState(LiveAudioState.speaking);
@@ -260,7 +303,7 @@ class LiveAudioService {
         _playbackGeneration++;
         await _player.stopPlayer();
         _clearAudioBuffer();
-        _emitState(LiveAudioState.listening);
+        await _resumeRecorderAfterPlayback();
         break;
       case 'complete':
         unawaited(_playBufferedTurnAudio());

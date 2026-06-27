@@ -130,6 +130,12 @@ async def live_voice(websocket: WebSocket) -> None:
                                 ),
                             )
                         )
+                    elif message_type == "audio_stream_end":
+                        logger.info("Live audio stream pause received")
+                        with suppress(TypeError):
+                            await session.send_realtime_input(
+                                audio_stream_end=True
+                            )
                     elif message_type == "text":
                         logger.info("Live text message received")
                         await session.send_realtime_input(text=message["text"])
@@ -147,9 +153,24 @@ async def live_voice(websocket: WebSocket) -> None:
                             continue
 
                         if getattr(server_content, "interrupted", False):
+                            logger.info("Gemini Live interrupted current turn")
                             await _send_json(websocket, {"type": "interrupted"})
 
-                        if getattr(server_content, "generation_complete", False):
+                        turn_complete = getattr(server_content, "turn_complete", None)
+                        generation_complete = getattr(
+                            server_content,
+                            "generation_complete",
+                            False,
+                        )
+                        if turn_complete is True or (
+                            turn_complete is None and generation_complete
+                        ):
+                            logger.info(
+                                "Gemini Live turn complete "
+                                "turn_complete=%s generation_complete=%s",
+                                turn_complete,
+                                generation_complete,
+                            )
                             await _send_json(websocket, {"type": "complete"})
 
                         input_transcription = getattr(
