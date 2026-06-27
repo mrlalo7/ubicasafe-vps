@@ -29,6 +29,7 @@ class ApiService {
   Future<RagResponse> sendChatMessage({
     required String message,
     List<String> recentMessages = const [],
+    String language = 'es',
   }) async {
     final uri = Uri.parse('$_baseUrl/api/chat/');
 
@@ -40,6 +41,7 @@ class ApiService {
             body: jsonEncode({
               'message': message,
               'recent_messages': recentMessages.take(4).toList(),
+              'language': language,
             }),
           )
           .timeout(const Duration(seconds: 20));

@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=2000)
     recent_messages: list[str] = Field(default_factory=list, max_length=10)
+    language: str = Field(default="es", pattern="^(es|ay|es-ay)$")
 
 
 class ChatResponse(BaseModel):
@@ -48,6 +49,7 @@ async def chat(
         session=session,
         question=data.message,
         recent_messages=recent,
+        language=data.language,
     )
 
     logger.info(

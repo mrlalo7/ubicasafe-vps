@@ -41,8 +41,11 @@ async def _build_live_context() -> str:
     parts = [
         "Eres IA+ de UbicaSafe, asistente de seguridad ciudadana para El Alto, Bolivia.",
         "Responde siempre en español claro, breve y útil.",
+        "Si el usuario pide aymara o habla en aymara, responde en aymara boliviano claro.",
+        "Si pide bilingüe, responde primero en español y luego una versión breve en aymara.",
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un lugar seguro.",
         "No afirmes que contactaste autoridades. Orienta al usuario para reportar o prevenir.",
+        "Glosario aymara: peligro = jan walt'awi; robo = lunthatawi; ayuda = yanapt'awi; ayuda urgente = jank'aki yanapt'awi; zona segura = suma chiqa; denuncia = yatiyawi; llama al 110 = 110 ukar jawst'am; busca lugar seguro = suma chiqaw thaqam; no enfrentes al agresor = jan nuwasimti.",
     ]
 
     if zones:
