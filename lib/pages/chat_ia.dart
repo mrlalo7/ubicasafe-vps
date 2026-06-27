@@ -40,6 +40,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
   bool _speechAvailable = false;
   bool _autoListen = true;
   String _localeId = 'es_BO';
+  String _assistantLanguage = 'es';
   String _lastSubmittedSpeech = '';
   bool _micMuted = false;
   String _assistantStatus = 'Wara está escuchando...';
@@ -59,6 +60,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     });
     _initLiveAudio();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _liveAudioService.language = _assistantLanguage;
       _liveAudioService.start();
     });
   }
@@ -316,6 +318,33 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     });
   }
 
+  Future<void> _setAssistantLanguage(String language) async {
+    if (_assistantLanguage == language) return;
+
+    HapticFeedback.selectionClick();
+    _restartListenTimer?.cancel();
+    await _speech.stop();
+    await _tts.stop();
+    await _liveAudioService.stop();
+    _liveAudioService.language = language;
+
+    if (!mounted) return;
+    setState(() {
+      _assistantLanguage = language;
+      _assistantStatus = language == 'ay'
+          ? 'Wara aymar arun istaskiwa...'
+          : 'Wara está escuchando...';
+      _assistantReply = language == 'ay'
+          ? 'Jichhax aymar arun yanapt’äma.'
+          : 'Ahora responderé en español.';
+      _thinking = true;
+      _speaking = true;
+      _listening = false;
+    });
+
+    await _liveAudioService.start();
+  }
+
   Future<void> _startListening() async {
     if (_listening || _thinking) return;
 
@@ -450,6 +479,11 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                         ),
                         textAlign: TextAlign.center,
                       ),
+                      const SizedBox(height: 12),
+                      _LanguageSwitch(
+                        value: _assistantLanguage,
+                        onChanged: _setAssistantLanguage,
+                      ),
                       const SizedBox(height: 10),
                       _TimerBadge(label: _elapsedLabel),
                       const SizedBox(height: 8),
@@ -504,9 +538,21 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                       const SizedBox(height: 16),
                       _QuickGrid(
                         onReport: () => _open(const ReportarRobo()),
-                        onRisk: () => _sendText('¿Es segura esta zona?'),
-                        onUrgent: () => _sendText('Necesito ayuda urgente'),
-                        onTips: () => _sendText('Consejos de seguridad'),
+                        onRisk: () => _sendText(
+                          _assistantLanguage == 'ay'
+                              ? 'Aka chiqax jan waltawit segura ukhama?'
+                              : '¿Es segura esta zona?',
+                        ),
+                        onUrgent: () => _sendText(
+                          _assistantLanguage == 'ay'
+                              ? 'Jankaki yanapt’a munta'
+                              : 'Necesito ayuda urgente',
+                        ),
+                        onTips: () => _sendText(
+                          _assistantLanguage == 'ay'
+                              ? 'Sarnaqañatakix seguridad tuqit iwxt’anaka'
+                              : 'Consejos de seguridad',
+                        ),
                       ),
                       const SizedBox(height: 18),
                       _CallControls(
@@ -613,6 +659,80 @@ class _TimerBadge extends StatelessWidget {
             style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LanguageSwitch extends StatelessWidget {
+  const _LanguageSwitch({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LanguageOption(
+            label: 'Español',
+            selected: value == 'es',
+            onTap: () => onChanged('es'),
+          ),
+          _LanguageOption(
+            label: 'Aymara',
+            selected: value == 'ay',
+            onTap: () => onChanged('ay'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageOption extends StatelessWidget {
+  const _LanguageOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      decoration: BoxDecoration(
+        color: selected
+            ? AppColors.accentBlue.withValues(alpha: 0.9)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: selected ? AppShadows.blueGlow : null,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Text(
+            label,
+            style: AppTextStyles.caption.copyWith(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
       ),
     );
   }

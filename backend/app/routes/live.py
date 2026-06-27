@@ -31,7 +31,7 @@ _AYMARA_RISK_LEVELS = {
 }
 
 
-async def _build_live_context() -> str:
+async def _build_live_context(language: str = "es") -> str:
     """Load a compact DB snapshot so Live has current UbicaSafe context."""
     async with async_session_factory() as session:
         zone_result = await session.execute(
@@ -46,14 +46,21 @@ async def _build_live_context() -> str:
         )
         reports = list(report_result.scalars().all())
 
+    language_instruction = (
+        "Responde SIEMPRE en aymara claro, aunque el usuario mezcle español. "
+        "No mezcles español para el nivel de riesgo. "
+        "Traduce niveles así: bajo = jisk'a jan walt'awi, medio = taypi jan walt'awi, "
+        "alto = jach'a jan walt'awi, critico = sinti jach'a jan walt'awi. "
+        "No digas BAJO, MEDIO, ALTO ni CRITICO."
+        if language == "ay"
+        else "Responde SIEMPRE en español claro, aunque el usuario mezcle aymara."
+    )
+
     parts = [
         "Te llamas Wara. Eres Wara, la asistente de seguridad ciudadana de UbicaSafe para El Alto, Bolivia.",
         "Si el usuario pregunta tu nombre o quién eres, responde: Soy Wara, tu asistente de seguridad de UbicaSafe.",
         "Responde siempre breve, natural y útil.",
-        "Si el usuario habla en aymara, responde en aymara claro. No mezcles español para el nivel de riesgo.",
-        "En aymara traduce niveles así: bajo = jisk'a jan walt'awi, medio = taypi jan walt'awi, alto = jach'a jan walt'awi, critico = sinti jach'a jan walt'awi.",
-        "Si respondes en aymara, no digas BAJO, MEDIO, ALTO ni CRITICO.",
-        "Si el usuario habla en español, responde en español claro.",
+        language_instruction,
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un lugar seguro.",
         "No afirmes que contactaste autoridades. Orienta al usuario para reportar o prevenir.",
     ]
@@ -91,9 +98,16 @@ async def _send_json(websocket: WebSocket, payload: dict) -> None:
 async def live_voice(websocket: WebSocket) -> None:
     """Bridge Flutter PCM audio to Gemini Live and stream PCM audio back."""
     await websocket.accept()
-    logger.info("Live voice websocket accepted client=%s", websocket.client)
+    language = websocket.query_params.get("language", "es")
+    if language not in {"es", "ay"}:
+        language = "es"
+    logger.info(
+        "Live voice websocket accepted client=%s language=%s",
+        websocket.client,
+        language,
+    )
     client = genai.Client(api_key=settings.gemini_api_key)
-    live_context = await _build_live_context()
+    live_context = await _build_live_context(language)
     config = {
         "response_modalities": ["AUDIO"],
         "input_audio_transcription": {},

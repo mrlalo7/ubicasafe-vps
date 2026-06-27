@@ -19,6 +19,7 @@ class LiveAudioService {
 
   final String _baseUrl;
   bool muted = false;
+  String language = 'es';
   final AudioRecorder _recorder = AudioRecorder();
   final FlutterSoundPlayer _player = FlutterSoundPlayer();
   final StreamController<LiveAudioState> _stateController =
@@ -71,6 +72,7 @@ class LiveAudioService {
       final uri = Uri.parse(_baseUrl).replace(
         scheme: Uri.parse(_baseUrl).scheme == 'https' ? 'wss' : 'ws',
         path: '/api/live',
+        queryParameters: {'language': language},
       );
 
       _channel = WebSocketChannel.connect(uri);
