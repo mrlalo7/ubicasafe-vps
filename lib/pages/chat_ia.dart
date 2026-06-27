@@ -156,8 +156,8 @@ class _ChatIaScreenState extends State<ChatIaScreen>
 
     await _configureNaturalVoice();
     await _tts.awaitSpeakCompletion(true);
-    await _tts.setSpeechRate(0.43);
-    await _tts.setPitch(0.96);
+    await _tts.setSpeechRate(0.46);
+    await _tts.setPitch(1.04);
     await _tts.setVolume(1.0);
     _tts.setStartHandler(() {
       if (!mounted) return;
@@ -213,25 +213,16 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     try {
       final voices = await _tts.getVoices;
       if (voices is List) {
-        final selected = voices.whereType<Map>().firstWhere(
-          (voice) {
-            final locale = '${voice['locale'] ?? voice['language'] ?? ''}'
-                .toLowerCase();
-            final name = '${voice['name'] ?? ''}'.toLowerCase();
-            return locale.startsWith('es') &&
-                (name.contains('neural') ||
-                    name.contains('wavenet') ||
-                    name.contains('premium') ||
-                    name.contains('female') ||
-                    name.contains('mujer'));
-          },
-          orElse: () => voices.whereType<Map>().firstWhere(
-            (voice) => '${voice['locale'] ?? voice['language'] ?? ''}'
-                .toLowerCase()
-                .startsWith('es'),
-            orElse: () => const {},
-          ),
+        final spanishVoices = voices
+            .whereType<Map>()
+            .where((voice) => _spanishVoiceScore(voice) > 0)
+            .toList();
+        spanishVoices.sort(
+          (a, b) => _spanishVoiceScore(b).compareTo(_spanishVoiceScore(a)),
         );
+        final selected = spanishVoices.isNotEmpty
+            ? spanishVoices.first
+            : const <String, String>{};
         if (selected.isNotEmpty) {
           final name = selected['name']?.toString();
           final locale = (selected['locale'] ?? selected['language'])
@@ -245,6 +236,50 @@ class _ChatIaScreenState extends State<ChatIaScreen>
       // The platform TTS voice list is optional; language/rate still improve output.
     }
     _ttsReady = true;
+  }
+
+  int _spanishVoiceScore(Map voice) {
+    final locale = '${voice['locale'] ?? voice['language'] ?? ''}'
+        .replaceAll('-', '_')
+        .toLowerCase();
+    final name = '${voice['name'] ?? voice['voice'] ?? ''}'.toLowerCase();
+    final gender = '${voice['gender'] ?? ''}'.toLowerCase();
+
+    if (!locale.startsWith('es') && !name.contains('spanish')) return 0;
+
+    var score = 10;
+    if (locale == 'es_bo') score += 18;
+    if (locale == 'es_es' || locale == 'es_mx' || locale == 'es_us') {
+      score += 14;
+    }
+    if (locale.startsWith('es_')) score += 8;
+
+    if (gender.contains('female') || gender.contains('femenino')) score += 28;
+    if (name.contains('female') || name.contains('mujer')) score += 24;
+    if (name.contains('paulina') ||
+        name.contains('monica') ||
+        name.contains('mónica') ||
+        name.contains('elvira') ||
+        name.contains('sabina') ||
+        name.contains('helena') ||
+        name.contains('lucia') ||
+        name.contains('lucía') ||
+        name.contains('maria') ||
+        name.contains('maría')) {
+      score += 18;
+    }
+
+    if (name.contains('neural') ||
+        name.contains('wavenet') ||
+        name.contains('natural') ||
+        name.contains('premium') ||
+        name.contains('enhanced')) {
+      score += 30;
+    }
+    if (name.contains('google')) score += 8;
+    if (name.contains('compact') || name.contains('default')) score -= 8;
+
+    return score;
   }
 
   void _scheduleListeningRestart({

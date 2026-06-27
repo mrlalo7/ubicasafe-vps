@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     generation_model: str = "gemini-2.5-flash"
     live_model: str = "gemini-3.1-flash-live-preview"
+    live_voice_name: str = "Aoede"
 
     # ── CORS ──────────────────────────────────────────────────────────
     # TODO(security): Restrict CORS_ORIGINS to specific trusted domains in production.

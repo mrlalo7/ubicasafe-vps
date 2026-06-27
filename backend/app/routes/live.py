@@ -82,7 +82,7 @@ async def live_voice(websocket: WebSocket) -> None:
         "speech_config": {
             "voice_config": {
                 "prebuilt_voice_config": {
-                    "voice_name": "Kore",
+                    "voice_name": settings.live_voice_name,
                 }
             }
         },
