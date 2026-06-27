@@ -280,6 +280,74 @@ def build_rag_context(
     return "\n".join(parts)
 
 
+def build_grounded_fallback_response(
+    reports: list[dict],
+    zones: list[dict],
+    language: str,
+) -> str:
+    """Build a deterministic answer from retrieved data if Gemini fails."""
+    language = normalize_language(language)
+    zone = zones[0] if zones else None
+    report_count = len(reports)
+
+    if zone is None:
+        if language == "ay":
+            return (
+                "Janiw aka tuqit qhananchata yatiyawix jikxataskiti. "
+                "Suma chiqanakaru sarnaqam ukat jan walt'awi utjchi ukhaxa "
+                "110 ukar jawst'am."
+            )
+        if language == "es-ay":
+            return (
+                "No encontré datos específicos de esa zona. Mantén precaución "
+                "y llama al 110 si hay peligro inmediato.\n\n"
+                "Aymarata: Aka tuqit janiw qhananchata yatiyawix utjkiti. "
+                "Jan walt'awi utjchi ukhaxa 110 ukar jawst'am."
+            )
+        return (
+            "No encontré datos específicos de esa zona. Mantén precaución y "
+            "llama al 110 si hay peligro inmediato."
+        )
+
+    name = str(zone.get("name", "Esta zona"))
+    spanish_level = risk_level_label(zone.get("risk_level"))
+    aymara_level = risk_level_aymara_label(zone.get("risk_level"))
+    description = str(zone.get("description") or "").strip()
+    report_phrase_es = (
+        f"Además, el RAG encontró {report_count} reporte(s) reciente(s) relacionado(s)."
+        if report_count
+        else "No hay reportes recientes relacionados en esta consulta."
+    )
+    report_phrase_ay = (
+        f"RAG ukax {report_count} jak'a yatiyawi jikxati."
+        if report_count
+        else "Aka jiskt'awinx janiw machaq yatiyawix jikxataskiti."
+    )
+
+    if language == "ay":
+        details = f" {description}" if description else ""
+        return (
+            f"{name} ukax {aymara_level} ({spanish_level}) ukham uñjatawa. "
+            f"{report_phrase_ay}{details} "
+            "Suma qhawqhasisa sarnaqam; arumax juk'amp amuyumpi sarnaqam. "
+            "Jichhpach jan walt'awi utjchi ukhaxa, 110 ukar jawst'am."
+        )
+
+    if language == "es-ay":
+        return (
+            f"{name} tiene nivel de riesgo {spanish_level}. {report_phrase_es} "
+            f"{description} Mantén precaución y llama al 110 si hay peligro inmediato.\n\n"
+            f"Aymarata: {name} ukax {aymara_level} ({spanish_level}) ukham "
+            f"uñjatawa. {report_phrase_ay} Jan walt'awi utjchi ukhaxa, "
+            "110 ukar jawst'am."
+        )
+
+    return (
+        f"{name} tiene nivel de riesgo {spanish_level}. {report_phrase_es} "
+        f"{description} Mantén precaución y llama al 110 si hay peligro inmediato."
+    )
+
+
 async def generate_rag_response(
     question: str,
     context: str,
@@ -351,10 +419,7 @@ Pregunta del usuario:
         return await asyncio.to_thread(_generate)
     except Exception:
         logger.exception("Error generating RAG response")
-        return (
-            "Hubo un error al consultar la IA. "
-            "Por favor intenta nuevamente en unos segundos."
-        )
+        return ""
 
 
 async def rag_pipeline(
@@ -412,6 +477,9 @@ async def rag_pipeline(
         recent_messages,
         language,
     )
+    if not answer:
+        warnings.append("generation_failed_fallback")
+        answer = build_grounded_fallback_response(reports, zones, language)
 
     return {
         "answer": answer,
