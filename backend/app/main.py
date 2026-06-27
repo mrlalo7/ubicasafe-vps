@@ -13,7 +13,7 @@ from slowapi.util import get_remote_address
 from app.config import get_settings
 from app.database.connection import engine
 from app.models import Base
-from app.routes import chat, live, reports, stats, zones
+from app.routes import chat, live, reports, stats, tts, zones
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +84,7 @@ app.include_router(reports.router)
 app.include_router(chat.router)
 app.include_router(live.router)
 app.include_router(stats.router)
+app.include_router(tts.router)
 app.include_router(zones.router)
 
 

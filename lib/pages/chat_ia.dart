@@ -11,6 +11,7 @@ import 'package:ubicasafe/pages/configuracion.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
+import 'package:ubicasafe/services/backend_tts_service.dart';
 import 'package:ubicasafe/services/gemini_service.dart';
 import 'package:ubicasafe/services/live_audio_service.dart';
 
@@ -26,6 +27,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
   late final AnimationController _voiceController;
   final GeminiService _geminiService = GeminiService();
   final LiveAudioService _liveAudioService = LiveAudioService();
+  final BackendTtsService _backendTtsService = BackendTtsService();
   final SpeechToText _speech = SpeechToText();
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _textController = TextEditingController();
@@ -73,6 +75,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     _liveStateSubscription?.cancel();
     _liveMessageSubscription?.cancel();
     _liveAudioService.dispose();
+    _backendTtsService.dispose();
     _voiceController.dispose();
     _speech.stop();
     _tts.stop();
@@ -95,7 +98,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
             _thinking = false;
             _listening = true;
             _speaking = true;
-            _assistantStatus = _micMuted ? 'Micrófono silenciado' : 'Wara está escuchando...';
+            _assistantStatus = _micMuted
+                ? 'Micrófono silenciado'
+                : 'Wara está escuchando...';
             break;
           case LiveAudioState.speaking:
             _thinking = false;
@@ -371,6 +376,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     _autoListen = false;
     _restartListenTimer?.cancel();
     _speech.stop();
+    _backendTtsService.stop();
     _tts.stop();
     setState(() => _keyboardOpen = !_keyboardOpen);
   }
@@ -383,6 +389,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     _autoListen = true;
     _restartListenTimer?.cancel();
     await _liveAudioService.stop();
+    await _backendTtsService.stop();
     await _speech.stop();
     await _tts.stop();
     setState(() {
@@ -416,6 +423,22 @@ class _ChatIaScreenState extends State<ChatIaScreen>
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (cleanText.isEmpty) return;
+
+    final spokenByBackend = await _backendTtsService.speak(cleanText);
+    if (spokenByBackend) {
+      if (!mounted) return;
+      setState(() {
+        _speaking = false;
+        _assistantStatus = _autoListen
+            ? 'Esperando tu voz...'
+            : 'Toca el micrófono para hablar';
+      });
+      if (_autoListen) {
+        _scheduleListeningRestart();
+      }
+      return;
+    }
+
     if (!_ttsReady) {
       await _configureNaturalVoice();
     }
@@ -466,7 +489,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                     children: [
                       Text(
                         'Hablando con Wara',
-                        style: AppTextStyles.headline2.copyWith(fontWeight: FontWeight.w800),
+                        style: AppTextStyles.headline2.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
@@ -610,8 +635,6 @@ class _ReplyPanel extends StatelessWidget {
   }
 }
 
-
-
 class _TimerBadge extends StatelessWidget {
   const _TimerBadge({required this.label});
 
@@ -695,7 +718,9 @@ class _VoiceOrb extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: speaking ? 0.38 : 0.18),
+                      color: const Color(
+                        0xFF00E5FF,
+                      ).withValues(alpha: speaking ? 0.38 : 0.18),
                       blurRadius: speaking ? 36 : 18,
                       spreadRadius: speaking ? 4 : 1,
                     ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:ubicasafe/data/risk_zones.dart';
@@ -159,6 +160,34 @@ class ApiService {
     final zones = await getZones();
     return zones.map(RiskZone.fromJson).toList(growable: false);
   }
+
+  /// Generate natural speech audio from the backend Gemini TTS endpoint.
+  Future<TtsAudio?> synthesizeSpeech(String text) async {
+    final uri = Uri.parse('$_baseUrl/api/tts/');
+
+    try {
+      final response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(const Duration(seconds: 35));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return TtsAudio(
+          bytes: base64Decode(data['audio_base64'] as String),
+          mimeType: data['mime_type'] as String? ?? 'audio/pcm;rate=24000',
+          sampleRate: data['sample_rate'] as int? ?? 24000,
+          channels: data['channels'] as int? ?? 1,
+        );
+      }
+    } catch (_) {
+      // The UI will fall back to platform TTS.
+    }
+    return null;
+  }
 }
 
 /// Response from the RAG pipeline.
@@ -176,4 +205,19 @@ class RagResponse {
   final int zonesUsed;
   final bool fromRag;
   final bool error;
+}
+
+/// Audio returned by the backend TTS endpoint.
+class TtsAudio {
+  const TtsAudio({
+    required this.bytes,
+    required this.mimeType,
+    required this.sampleRate,
+    required this.channels,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
+  final int sampleRate;
+  final int channels;
 }
