@@ -980,7 +980,7 @@ class _KeyboardPanel extends StatelessWidget {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
               decoration: const InputDecoration(
-                hintText: 'Escribe tu consulta para IA+...',
+                hintText: 'Escribe tu consulta para Wara...',
               ),
             ),
           ),
@@ -1126,7 +1126,7 @@ class _AiNavItem extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'IA+',
+              'Wara',
               style: AppTextStyles.caption.copyWith(
                 color: const Color(0xFFB098FF),
                 fontWeight: FontWeight.w900,
