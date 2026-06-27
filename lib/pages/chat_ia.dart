@@ -455,7 +455,9 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                       const SizedBox(height: 8),
                       _VoiceOrb(
                         controller: _voiceController,
-                        speaking: _speaking || _listening || _thinking,
+                        listening: _listening,
+                        talking: _speaking && !_listening && !_thinking,
+                        thinking: _thinking,
                       ),
                       const SizedBox(height: 6),
                       Row(
@@ -617,10 +619,17 @@ class _TimerBadge extends StatelessWidget {
 }
 
 class _VoiceOrb extends StatelessWidget {
-  const _VoiceOrb({required this.controller, required this.speaking});
+  const _VoiceOrb({
+    required this.controller,
+    required this.listening,
+    required this.talking,
+    required this.thinking,
+  });
 
   final AnimationController controller;
-  final bool speaking;
+  final bool listening;
+  final bool talking;
+  final bool thinking;
 
   @override
   Widget build(BuildContext context) {
@@ -628,6 +637,20 @@ class _VoiceOrb extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         final t = controller.value;
+        final active = listening || talking || thinking;
+        final stateColor = talking
+            ? const Color(0xFF35E889)
+            : listening
+            ? AppColors.accentBlueLight
+            : thinking
+            ? const Color(0xFF9B7CFF)
+            : AppColors.textSecondary;
+        final secondaryColor = talking
+            ? const Color(0xFF0ABF70)
+            : listening
+            ? const Color(0xFF2F80FF)
+            : const Color(0xFF7C5CFF);
+
         return SizedBox(
           height: 190,
           child: Stack(
@@ -635,48 +658,70 @@ class _VoiceOrb extends StatelessWidget {
             children: [
               CustomPaint(
                 size: const Size(double.infinity, 190),
-                painter: _WaveformPainter(progress: t, active: speaking),
+                painter: _WaveformPainter(
+                  progress: t,
+                  active: active,
+                  color: stateColor,
+                  secondaryColor: secondaryColor,
+                ),
               ),
               for (var i = 0; i < 5; i++)
                 Transform.scale(
-                  scale:
-                      1 + (speaking ? ((t + i * 0.16) % 1) * 0.32 : i * 0.05),
+                  scale: 1 + (active ? ((t + i * 0.16) % 1) * 0.32 : i * 0.05),
                   child: Container(
                     width: 120 + i * 12,
                     height: 120 + i * 12,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color:
-                            Color.lerp(
-                              AppColors.accentBlueLight,
-                              const Color(0xFF9B7CFF),
-                              i / 5,
-                            )!.withValues(
-                              alpha: speaking ? 0.18 - i * 0.025 : 0.06,
-                            ),
+                        color: Color.lerp(
+                          stateColor,
+                          secondaryColor,
+                          i / 5,
+                        )!.withValues(alpha: active ? 0.2 - i * 0.026 : 0.06),
                       ),
                     ),
                   ),
                 ),
-              Container(
-                width: 128,
-                height: 128,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                width: 138,
+                height: 138,
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      stateColor.withValues(alpha: active ? 0.95 : 0.5),
+                      secondaryColor.withValues(alpha: active ? 0.75 : 0.35),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(
-                        0xFF00E5FF,
-                      ).withValues(alpha: speaking ? 0.38 : 0.18),
-                      blurRadius: speaking ? 36 : 18,
-                      spreadRadius: speaking ? 4 : 1,
+                      color: stateColor.withValues(alpha: active ? 0.42 : 0.18),
+                      blurRadius: active ? 38 : 18,
+                      spreadRadius: active ? 5 : 1,
                     ),
                   ],
                 ),
-                child: Image.asset(
-                  'assets/icons/ubicasafe_shield.png',
-                  fit: BoxFit.contain,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.bgDark,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/img/wara_assistant.jpeg',
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.28),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1095,10 +1140,17 @@ class _AiNavItem extends StatelessWidget {
 }
 
 class _WaveformPainter extends CustomPainter {
-  const _WaveformPainter({required this.progress, required this.active});
+  const _WaveformPainter({
+    required this.progress,
+    required this.active,
+    required this.color,
+    required this.secondaryColor,
+  });
 
   final double progress;
   final bool active;
+  final Color color;
+  final Color secondaryColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1116,8 +1168,8 @@ class _WaveformPainter extends CustomPainter {
         final amplitude = active ? 12 + math.sin(phase).abs() * 42 : 10.0;
         final alpha = (1 - i / 40).clamp(0.18, 0.85);
         paint.color = Color.lerp(
-          AppColors.accentBlueLight,
-          const Color(0xFF7C5CFF),
+          color,
+          secondaryColor,
           i / 34,
         )!.withValues(alpha: alpha);
         canvas.drawLine(
@@ -1131,6 +1183,9 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _WaveformPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.active != active;
+    return oldDelegate.progress != progress ||
+        oldDelegate.active != active ||
+        oldDelegate.color != color ||
+        oldDelegate.secondaryColor != secondaryColor;
   }
 }
