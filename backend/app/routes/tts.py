@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import socket
@@ -19,6 +20,8 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])
 settings = get_settings()
+_AUDIO_CACHE: dict[str, str] = {}
+_MAX_TTS_CHARS = 420
 
 
 class TtsRequest(BaseModel):
@@ -93,13 +96,49 @@ def _extract_audio_base64(payload: dict) -> str | None:
     return None
 
 
+def _prepare_tts_text(text: str) -> str:
+    """Keep spoken replies short enough for predictable Gemini TTS latency."""
+    normalized = " ".join(text.split())
+    if len(normalized) <= _MAX_TTS_CHARS:
+        return normalized
+
+    cutoff = _MAX_TTS_CHARS
+    for separator in (". ", "? ", "! ", "; "):
+        candidate = normalized.rfind(separator, 0, _MAX_TTS_CHARS)
+        if candidate >= 180:
+            cutoff = candidate + 1
+            break
+
+    shortened = normalized[:cutoff].strip(" ,;:-")
+    if shortened and shortened[-1] not in ".?!":
+        shortened += "."
+    return shortened
+
+
 def _generate_tts_audio(text: str) -> str:
     """Generate base64 PCM audio through Gemini generateContent TTS."""
+    prepared_text = _prepare_tts_text(text)
+    cache_key = hashlib.sha256(
+        f"{settings.tts_model}|{settings.live_voice_name}|{prepared_text}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    cached_audio = _AUDIO_CACHE.get(cache_key)
+    if cached_audio:
+        logger.info(
+            "Gemini TTS cache hit model=%s voice=%s text_length=%d",
+            settings.tts_model,
+            settings.live_voice_name,
+            len(prepared_text),
+        )
+        return cached_audio
+
     prompt = (
-        "Say in Spanish with a natural, warm, calm female assistant voice. "
+        "Say the provided text exactly, in the same language it is written, "
+        "with a natural, warm, calm female assistant voice. "
         "Use a Bolivian or neutral Latin American accent, friendly but serious, "
         "with clear pronunciation and a moderate pace. Do not add words.\n\n"
-        f"{text}"
+        f"{prepared_text}"
     )
     body = {
         "contents": [
@@ -145,11 +184,14 @@ def _generate_tts_audio(text: str) -> str:
             raw_body = response.read().decode("utf-8")
             elapsed_ms = int((time.monotonic() - started_at) * 1000)
             logger.info(
-                "Gemini TTS success model=%s voice=%s status=%s elapsed_ms=%d",
+                "Gemini TTS success model=%s voice=%s status=%s elapsed_ms=%d "
+                "text_length=%d original_length=%d",
                 settings.tts_model,
                 settings.live_voice_name,
                 response.status,
                 elapsed_ms,
+                len(prepared_text),
+                len(text),
             )
             payload = json.loads(raw_body)
     except urllib.error.HTTPError as exc:
@@ -171,11 +213,13 @@ def _generate_tts_audio(text: str) -> str:
         elapsed_ms = int((time.monotonic() - started_at) * 1000)
         logger.warning(
             "Gemini TTS timeout/network error model=%s voice=%s elapsed_ms=%d "
-            "timeout_seconds=%d error=%r",
+            "timeout_seconds=%d text_length=%d original_length=%d error=%r",
             settings.tts_model,
             settings.live_voice_name,
             elapsed_ms,
             settings.tts_timeout_seconds,
+            len(prepared_text),
+            len(text),
             exc,
         )
         raise HTTPException(
@@ -203,6 +247,9 @@ def _generate_tts_audio(text: str) -> str:
             detail="Gemini TTS no devolvió audio.",
         )
 
+    if len(_AUDIO_CACHE) >= 64:
+        _AUDIO_CACHE.clear()
+    _AUDIO_CACHE[cache_key] = audio_base64
     return audio_base64
 
 
