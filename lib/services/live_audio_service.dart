@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -44,6 +44,16 @@ class LiveAudioService {
     _emitState(LiveAudioState.connecting);
 
     try {
+      if (_isInsecureWebOrigin) {
+        _emitMessage(
+          'En navegador el micrófono requiere HTTPS o localhost. '
+          'Para probar voz real usa la APK o publica el frontend con HTTPS.',
+        );
+        _emitState(LiveAudioState.error);
+        _running = false;
+        return;
+      }
+
       final hasPermission = await _recorder.hasPermission();
       if (!hasPermission) {
         _emitMessage('Permiso de micrófono denegado.');
@@ -113,6 +123,14 @@ class LiveAudioService {
       await _channel?.sink.close();
       _channel = null;
     }
+  }
+
+  bool get _isInsecureWebOrigin {
+    if (!kIsWeb) return false;
+    final uri = Uri.base;
+    if (uri.scheme == 'https') return false;
+    if (uri.host == 'localhost' || uri.host == '127.0.0.1') return false;
+    return true;
   }
 
   Future<bool> sendText(String text) async {
