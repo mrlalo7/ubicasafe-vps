@@ -583,7 +583,7 @@ class _MapaRiesgoState extends State<MapaRiesgo> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    _usingBackendZones ? 'Datos actualizados' : 'Offline',
+                    _usingBackendZones ? 'VPS' : 'Offline',
                     style: AppTextStyles.caption.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w800,

@@ -25,13 +25,11 @@ class GeminiService {
   Future<String> sendRagMessage({
     required String message,
     List<String> recentMessages = const [],
-    String language = 'es',
   }) async {
     // Try RAG backend first
     final ragResponse = await _apiService.sendChatMessage(
       message: message,
       recentMessages: recentMessages,
-      language: language,
     );
 
     if (ragResponse.fromRag) {
@@ -57,7 +55,6 @@ class GeminiService {
         .replaceAll(RegExp(r'\bLOW\b', caseSensitive: false), 'BAJO')
         .replaceAll(RegExp(r'\bCRITICAL\b', caseSensitive: false), 'CRITICO')
         .replaceAll(RegExp(r'[ \t]+'), ' ')
-        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
   }
 

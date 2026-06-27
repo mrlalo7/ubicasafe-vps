@@ -662,82 +662,82 @@ class _MapPreview extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
-        height: 320,
-        child: Column(
+        height: 255,
+        child: Stack(
           children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GoogleMap(
-                      onMapCreated: onMapCreated,
-                      style: mapStyle,
-                      initialCameraPosition: CameraPosition(
-                        target: currentPosition,
-                        zoom: 12.8,
-                      ),
-                      circles: _circles,
-                      markers: _markers,
-                      polygons: {
-                        Polygon(
-                          polygonId: const PolygonId('el_alto_bounds'),
-                          points: RiskMapData.elAltoBounds,
-                          fillColor: AppColors.accentBlue.withValues(
-                            alpha: 0.06,
-                          ),
-                          strokeColor: AppColors.accentBlue.withValues(
-                            alpha: 0.45,
-                          ),
-                          strokeWidth: 2,
-                        ),
-                      },
-                      liteModeEnabled: true,
-                      compassEnabled: false,
-                      mapToolbarEnabled: false,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      rotateGesturesEnabled: false,
-                      tiltGesturesEnabled: false,
-                      scrollGesturesEnabled: false,
-                      zoomGesturesEnabled: false,
-                      onTap: (_) => onOpen(),
-                    ),
+            Positioned.fill(
+              child: GoogleMap(
+                onMapCreated: onMapCreated,
+                style: mapStyle,
+                initialCameraPosition: CameraPosition(
+                  target: currentPosition,
+                  zoom: 12.8,
+                ),
+                circles: _circles,
+                markers: _markers,
+                polygons: {
+                  Polygon(
+                    polygonId: const PolygonId('el_alto_bounds'),
+                    points: RiskMapData.elAltoBounds,
+                    fillColor: AppColors.accentBlue.withValues(alpha: 0.06),
+                    strokeColor: AppColors.accentBlue.withValues(alpha: 0.45),
+                    strokeWidth: 2,
                   ),
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: _MapStatusBadge(visible: usingBackendZones),
-                  ),
-                ],
+                },
+                liteModeEnabled: true,
+                compassEnabled: false,
+                mapToolbarEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                rotateGesturesEnabled: false,
+                tiltGesturesEnabled: false,
+                scrollGesturesEnabled: false,
+                zoomGesturesEnabled: false,
+                onTap: (_) => onOpen(),
               ),
             ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.bgSurface.withValues(alpha: 0.96),
-                border: const Border(
-                  top: BorderSide(color: AppColors.glassBorder),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: Row(
                 children: [
-                  const _Legend(),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: onOpen,
-                      icon: const Icon(Icons.open_in_full_rounded, size: 18),
-                      label: const Text('Ver mapa'),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
-                        backgroundColor: AppColors.bgCard.withValues(
-                          alpha: 0.92,
+                  const Expanded(child: _Legend()),
+                  const SizedBox(width: 10),
+                  if (usingBackendZones) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.safeGreen.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.safeGreen.withValues(alpha: 0.45),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Text(
+                        'VPS',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.safeGreen,
+                          fontWeight: FontWeight.w800,
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  ElevatedButton.icon(
+                    onPressed: onOpen,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                    label: const Text('Ver mapa'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 46),
+                      backgroundColor: AppColors.bgSurface.withValues(
+                        alpha: 0.92,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
                       ),
                     ),
                   ),
@@ -746,44 +746,6 @@ class _MapPreview extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MapStatusBadge extends StatelessWidget {
-  const _MapStatusBadge({required this.visible});
-
-  final bool visible;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppColors.bgSurface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.safeGreen.withValues(alpha: 0.45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.cloud_done_rounded,
-            size: 15,
-            color: AppColors.safeGreen,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            'Datos actualizados',
-            style: AppTextStyles.caption.copyWith(
-              color: AppColors.safeGreen,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1324,7 +1286,6 @@ class _Legend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
       height: 46,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(

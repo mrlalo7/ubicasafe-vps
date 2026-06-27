@@ -46,90 +46,11 @@ RISK_LEVEL_LABELS = {
     "critical": "CRITICO",
 }
 
-RISK_LEVEL_AYMARA_LABELS = {
-    "low": "jisk'a jan walt'awi",
-    "medium": "taypi jan walt'awi",
-    "high": "jach'a jan walt'awi",
-    "critical": "sinti jach'a jan walt'awi",
-}
-
-SUPPORTED_LANGUAGES = {"es", "ay", "es-ay"}
-
-AYMARA_SECURITY_GLOSSARY = """
-Glosario practico español-aymara para UbicaSafe:
-- seguridad: jark'aqasiwi / suma jakasiwi
-- peligro: jan walt'awi
-- riesgo bajo: jisk'a jan walt'awi
-- riesgo medio: taypi jan walt'awi
-- riesgo alto: jach'a jan walt'awi
-- robo: lunthatawi
-- ladron: lunthata
-- denuncia/reporte: yatiyawi
-- ayuda: yanapt'awi
-- ayuda urgente: jank'aki yanapt'awi
-- zona segura: suma chiqa
-- zona peligrosa: jan wali chiqa
-- ubicacion: kawkhankta
-- llama al 110: 110 ukar jawst'am
-- busca un lugar seguro: suma chiqaw thaqam
-- no enfrentes al agresor: jan nuwasimti
-- comparte tu ubicacion: kawkhanktasa yatiyam
-- armas: armampi / nuwasiñ yänaka
-- lesiones/heridas: usuchjawi
-- de noche: arumaxa
-- transitar/caminar: sarnaqaña
-"""
-
-AYMARA_EMERGENCY_GUIDE = """
-Frases criticas sugeridas:
-Español: Si estás en peligro inmediato, llama al 110 y busca un lugar seguro.
-Aymara: Jichhpach jan walt'awinksta ukhaxa, 110 ukar jawst'am ukat suma chiqaw thaqam.
-
-Español: No enfrentes al agresor. Aléjate y comparte tu ubicación.
-Aymara: Jan nuwasimti. Jayan saram ukat kawkhanktasa yatiyam.
-
-Español: Si hubo heridas o armas, pide ayuda urgente.
-Aymara: Usuchjawi jan ukax armampi utjchi ukhaxa, jank'aki yanapt'awi mayim.
-"""
-
 
 def risk_level_label(value: str | None) -> str:
     """Return a user-facing Spanish label for a stored risk level."""
     normalized = (value or "").strip().lower()
     return RISK_LEVEL_LABELS.get(normalized, normalized.upper() or "NO ESPECIFICADO")
-
-
-def risk_level_aymara_label(value: str | None) -> str:
-    """Return a user-facing Aymara label for a stored risk level."""
-    normalized = (value or "").strip().lower()
-    return RISK_LEVEL_AYMARA_LABELS.get(normalized, "jan qhananchata")
-
-
-def normalize_language(language: str | None) -> str:
-    """Validate and normalize response language mode."""
-    normalized = (language or "es").strip().lower()
-    return normalized if normalized in SUPPORTED_LANGUAGES else "es"
-
-
-def language_instruction(language: str) -> str:
-    """Prompt block that controls Spanish/Aymara output."""
-    if language == "ay":
-        return (
-            "Responde principalmente en aymara boliviano claro y practico. "
-            "Usa frases cortas y naturales. Conserva nombres de zonas, calles, "
-            "universidades y lugares exactamente como aparecen en CONTEXTO. "
-            "Si una palabra tecnica de seguridad no tiene traduccion clara, "
-            "escribe el termino en aymara y agrega el español entre parentesis. "
-            "No traduzcas numeros de emergencia como 110."
-        )
-    if language == "es-ay":
-        return (
-            "Responde en formato bilingue. Primero una respuesta breve en español "
-            "y luego una version corta en aymara bajo el texto 'Aymarata:'. "
-            "La version en aymara debe ser clara, practica y no demasiado larga. "
-            "Conserva nombres de zonas y datos numericos sin traducir."
-        )
-    return "Responde en español claro, breve y util."
 
 
 async def search_similar_reports(
@@ -252,8 +173,7 @@ def build_rag_context(
         parts.append("=== ZONAS DE RIESGO RELEVANTES ===")
         for i, z in enumerate(zones, 1):
             parts.append(
-                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} "
-                f"(aymara: {risk_level_aymara_label(z.get('risk_level'))}) — "
+                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} — "
                 f"Radio: {z['radius_meters']:.0f}m — "
                 f"Reportes registrados: {z.get('report_count', 0)} — "
                 f"{z['description']}"
@@ -280,79 +200,10 @@ def build_rag_context(
     return "\n".join(parts)
 
 
-def build_grounded_fallback_response(
-    reports: list[dict],
-    zones: list[dict],
-    language: str,
-) -> str:
-    """Build a deterministic answer from retrieved data if Gemini fails."""
-    language = normalize_language(language)
-    zone = zones[0] if zones else None
-    report_count = len(reports)
-
-    if zone is None:
-        if language == "ay":
-            return (
-                "Janiw aka tuqit qhananchata yatiyawix jikxataskiti. "
-                "Suma chiqanakaru sarnaqam ukat jan walt'awi utjchi ukhaxa "
-                "110 ukar jawst'am."
-            )
-        if language == "es-ay":
-            return (
-                "No encontré datos específicos de esa zona. Mantén precaución "
-                "y llama al 110 si hay peligro inmediato.\n\n"
-                "Aymarata: Aka tuqit janiw qhananchata yatiyawix utjkiti. "
-                "Jan walt'awi utjchi ukhaxa 110 ukar jawst'am."
-            )
-        return (
-            "No encontré datos específicos de esa zona. Mantén precaución y "
-            "llama al 110 si hay peligro inmediato."
-        )
-
-    name = str(zone.get("name", "Esta zona"))
-    spanish_level = risk_level_label(zone.get("risk_level"))
-    aymara_level = risk_level_aymara_label(zone.get("risk_level"))
-    description = str(zone.get("description") or "").strip()
-    report_phrase_es = (
-        f"Además, el RAG encontró {report_count} reporte(s) reciente(s) relacionado(s)."
-        if report_count
-        else "No hay reportes recientes relacionados en esta consulta."
-    )
-    report_phrase_ay = (
-        f"RAG ukax {report_count} jak'a yatiyawi jikxati."
-        if report_count
-        else "Aka jiskt'awinx janiw machaq yatiyawix jikxataskiti."
-    )
-
-    if language == "ay":
-        details = f" {description}" if description else ""
-        return (
-            f"{name} ukax {aymara_level} ({spanish_level}) ukham uñjatawa. "
-            f"{report_phrase_ay}{details} "
-            "Suma qhawqhasisa sarnaqam; arumax juk'amp amuyumpi sarnaqam. "
-            "Jichhpach jan walt'awi utjchi ukhaxa, 110 ukar jawst'am."
-        )
-
-    if language == "es-ay":
-        return (
-            f"{name} tiene nivel de riesgo {spanish_level}. {report_phrase_es} "
-            f"{description} Mantén precaución y llama al 110 si hay peligro inmediato.\n\n"
-            f"Aymarata: {name} ukax {aymara_level} ({spanish_level}) ukham "
-            f"uñjatawa. {report_phrase_ay} Jan walt'awi utjchi ukhaxa, "
-            "110 ukar jawst'am."
-        )
-
-    return (
-        f"{name} tiene nivel de riesgo {spanish_level}. {report_phrase_es} "
-        f"{description} Mantén precaución y llama al 110 si hay peligro inmediato."
-    )
-
-
 async def generate_rag_response(
     question: str,
     context: str,
     recent_messages: list[str] | None = None,
-    language: str = "es",
 ) -> str:
     """Call Gemini with the RAG-enriched prompt.
 
@@ -360,11 +211,10 @@ async def generate_rag_response(
     section feeds it real data so it does not hallucinate statistics.
     """
 
-    language = normalize_language(language)
     system_instruction = (
         "Eres IA+ de UbicaSafe, asistente de seguridad ciudadana para "
         "El Alto y La Paz, Bolivia. "
-        f"{language_instruction(language)} "
+        "Respondes en español claro, breve y útil. "
         "IMPORTANTE: Basa tus respuestas en los datos reales proporcionados "
         "en la sección CONTEXTO. No inventes estadísticas ni reportes. "
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un "
@@ -374,12 +224,6 @@ async def generate_rag_response(
         "Cuando menciones niveles de riesgo, usa solo estas etiquetas en "
         "español: BAJO, MEDIO, ALTO o CRITICO. Nunca respondas LOW, MEDIUM, "
         "HIGH ni CRITICAL. "
-        "Cuando respondas en aymara, puedes conservar esas etiquetas de riesgo "
-        "en español junto a una explicacion breve en aymara. "
-        "Regla estricta para aymara: BAJO = jisk'a jan walt'awi, "
-        "MEDIO = taypi jan walt'awi, ALTO = jach'a jan walt'awi, "
-        "CRITICO = sinti jach'a jan walt'awi. Nunca uses 'jisk'a' para "
-        "MEDIO ni para ALTO. "
         "Guía al usuario para reportar, consultar riesgo o recibir "
         "consejos preventivos."
     )
@@ -388,17 +232,8 @@ async def generate_rag_response(
     if recent_messages:
         history = "Historial reciente:\n" + "\n".join(recent_messages[-4:]) + "\n\n"
 
-    language_context = ""
-    if language in {"ay", "es-ay"}:
-        language_context = (
-            f"\n\nAPOYO DE IDIOMA AYMARA:\n{AYMARA_SECURITY_GLOSSARY}\n"
-            f"{AYMARA_EMERGENCY_GUIDE}\n"
-            "Usa este glosario como guia, pero prioriza claridad y seguridad."
-        )
-
     prompt = f"""{history}CONTEXTO (datos reales de la base de datos de UbicaSafe):
 {context}
-{language_context}
 
 Pregunta del usuario:
 {question}"""
@@ -419,14 +254,16 @@ Pregunta del usuario:
         return await asyncio.to_thread(_generate)
     except Exception:
         logger.exception("Error generating RAG response")
-        return ""
+        return (
+            "Hubo un error al consultar la IA. "
+            "Por favor intenta nuevamente en unos segundos."
+        )
 
 
 async def rag_pipeline(
     session: AsyncSession,
     question: str,
     recent_messages: list[str] | None = None,
-    language: str = "es",
 ) -> dict:
     """Full RAG pipeline: embed → search → build context → generate.
 
@@ -470,23 +307,13 @@ async def rag_pipeline(
     context = build_rag_context(reports, zones)
 
     # 4. Generate response with Gemini
-    language = normalize_language(language)
-    answer = await generate_rag_response(
-        question,
-        context,
-        recent_messages,
-        language,
-    )
-    if not answer:
-        warnings.append("generation_failed_fallback")
-        answer = build_grounded_fallback_response(reports, zones, language)
+    answer = await generate_rag_response(question, context, recent_messages)
 
     return {
         "answer": answer,
         "sources": {
             "reports_used": len(reports),
             "zones_used": len(zones),
-            "language": language,
             "warnings": warnings,
         },
     }

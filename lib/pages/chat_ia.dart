@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:ubicasafe/core/app_theme.dart';
@@ -45,7 +44,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
   bool _speechAvailable = false;
   bool _autoListen = true;
   bool _ttsReady = false;
-  String _language = 'es';
   String _localeId = 'es_BO';
   String _lastSubmittedSpeech = '';
   bool _micMuted = false;
@@ -407,7 +405,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     final reply = await _geminiService.sendRagMessage(
       message: value,
       recentMessages: _conversation.reversed.skip(1).toList(),
-      language: _language,
     );
 
     if (!mounted) return;
@@ -427,70 +424,29 @@ class _ChatIaScreenState extends State<ChatIaScreen>
         .trim();
     if (cleanText.isEmpty) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final usePremiumVoice = prefs.getBool('voz_premium') ?? true;
-
-    if (usePremiumVoice) {
-      final spokenByBackend = await _backendTtsService.speak(
-        _voiceSummary(cleanText),
-      );
-      if (spokenByBackend) {
-        if (!mounted) return;
-        setState(() {
-          _speaking = false;
-          _assistantStatus = _autoListen
-              ? 'Esperando tu voz...'
-              : 'Toca el micrófono para hablar';
-        });
-        if (_autoListen) {
-          _scheduleListeningRestart();
-        }
-        return;
+    final spokenByBackend = await _backendTtsService.speak(cleanText);
+    if (spokenByBackend) {
+      if (!mounted) return;
+      setState(() {
+        _speaking = false;
+        _assistantStatus = _autoListen
+            ? 'Esperando tu voz...'
+            : 'Toca el micrófono para hablar';
+      });
+      if (_autoListen) {
+        _scheduleListeningRestart();
       }
+      return;
     }
 
     if (!_ttsReady) {
       await _configureNaturalVoice();
     }
     await _tts.speak(cleanText);
-
-    // Actualizar estado al usar el sintetizador local
-    if (!mounted) return;
-    setState(() {
-      _speaking = false;
-      _assistantStatus = _autoListen
-          ? 'Esperando tu voz...'
-          : 'Toca el micrófono para hablar';
-    });
-    if (_autoListen) {
-      _scheduleListeningRestart();
-    }
-  }
-
-  String _voiceSummary(String text) {
-    const maxLength = 360;
-    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.length <= maxLength) return normalized;
-
-    final clipped = normalized.substring(0, maxLength);
-    final lastSentence = clipped.lastIndexOf(RegExp(r'[.!?]'));
-    if (lastSentence > 160) {
-      return clipped.substring(0, lastSentence + 1);
-    }
-
-    final lastSpace = clipped.lastIndexOf(' ');
-    final safeEnd = lastSpace > 160 ? lastSpace : maxLength;
-    return '${clipped.substring(0, safeEnd).trim()}.';
   }
 
   String _localStatusFor(String input) {
     final text = input.toLowerCase();
-    if (_language == 'ay') {
-      return 'Aymarata jaysañataki wakichaski...';
-    }
-    if (_language == 'es-ay') {
-      return 'Preparando respuesta bilingüe...';
-    }
     if (text.contains('report') ||
         text.contains('robo') ||
         text.contains('incidente')) {
@@ -545,14 +501,6 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                           color: AppColors.textSecondary,
                         ),
                         textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 10),
-                      _LanguageSelector(
-                        value: _language,
-                        onChanged: (value) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _language = value);
-                        },
                       ),
                       const SizedBox(height: 10),
                       _TimerBadge(label: _elapsedLabel),
@@ -665,7 +613,7 @@ class _ReplyPanel extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 240),
       width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 128),
+      constraints: const BoxConstraints(maxHeight: 92),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
@@ -681,91 +629,6 @@ class _ReplyPanel extends StatelessWidget {
             height: 1.35,
           ),
           textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
-
-class _LanguageSelector extends StatelessWidget {
-  const _LanguageSelector({required this.value, required this.onChanged});
-
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  static const _items = [
-    ('es', 'Español'),
-    ('ay', 'Aymara'),
-    ('es-ay', 'Bilingüe'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.glassWhite.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final item in _items)
-            _LanguageChip(
-              label: item.$2,
-              selected: value == item.$1,
-              onTap: () => onChanged(item.$1),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LanguageChip extends StatelessWidget {
-  const _LanguageChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        color: selected
-            ? AppColors.accentBlueLight.withValues(alpha: 0.24)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected
-              ? AppColors.accentBlueLight.withValues(alpha: 0.52)
-              : Colors.transparent,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            child: Text(
-              label,
-              style: AppTextStyles.bodySmall.copyWith(
-                color: selected ? Colors.white : AppColors.textSecondary,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -849,23 +712,10 @@ class _VoiceOrb extends StatelessWidget {
                   ),
                 ),
               Container(
-                width: 138,
-                height: 138,
+                width: 128,
+                height: 128,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF2DE3FF),
-                      Color(0xFF725DFF),
-                      Color(0xFF041C35),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    width: 1.4,
-                  ),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(
@@ -876,77 +726,9 @@ class _VoiceOrb extends StatelessWidget {
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.all(4),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned.fill(
-                      child: ClipOval(
-                        child: DecoratedBox(
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF041427),
-                          ),
-                          child: Image.asset(
-                            'assets/img/wara_assistant.jpeg',
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(0, -0.34),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            center: const Alignment(-0.22, -0.42),
-                            radius: 0.92,
-                            colors: [
-                              Colors.white.withValues(alpha: 0.16),
-                              Colors.transparent,
-                            ],
-                          ),
-                          border: Border.all(
-                            color: const Color(
-                              0xFFB9F7FF,
-                            ).withValues(alpha: 0.42),
-                            width: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: -2,
-                      bottom: 4,
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF03152A),
-                          border: Border.all(
-                            color: const Color(
-                              0xFF2DE3FF,
-                            ).withValues(alpha: 0.62),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF2DE3FF,
-                              ).withValues(alpha: 0.28),
-                              blurRadius: 14,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'assets/icons/ubicasafe_shield.png',
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Image.asset(
+                  'assets/icons/ubicasafe_shield.png',
+                  fit: BoxFit.contain,
                 ),
               ),
             ],
