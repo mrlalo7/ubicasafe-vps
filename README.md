@@ -21,7 +21,7 @@ El proyecto esta pensado como una base adaptable para ciudades, comunidades, uni
 
 | Area | Descripcion |
 |---|---|
-| Mapas | OpenStreetMap con `flutter_map`, zonas, radios de riesgo y marcadores. |
+| Mapas | Google Maps con zonas, radios de riesgo, marcadores y visualizacion geoespacial. |
 | Ubicacion | Seguimiento GPS, permisos de ubicacion y marcador personalizado. |
 | IA | Asistente conversacional, voz/audio y flujos de orientacion. |
 | Reportes | Registro de incidentes para alimentar datos de seguridad. |
@@ -31,7 +31,7 @@ El proyecto esta pensado como una base adaptable para ciudades, comunidades, uni
 ## Stack
 
 - **Mobile**: Flutter, Dart
-- **Mapas**: OpenStreetMap, `flutter_map`, `latlong2`
+- **Mapas**: Google Maps, geolocalizacion y visualizacion de zonas de riesgo
 - **Geolocalizacion**: `geolocator`, `permission_handler`
 - **Autenticacion**: Firebase Auth, Google Sign-In
 - **IA y voz**: Gemini, RAG, STT/TTS, audio en vivo
@@ -77,11 +77,10 @@ flutter run -d chrome
 
 ## Configuracion
 
-La app usa OpenStreetMap para mapas, por lo que no requiere una API key de Google Maps para visualizar las rutas principales.
-
 Para una instalacion completa revisa:
 
 - Permisos de ubicacion e internet en `android/app/src/main/AndroidManifest.xml`.
+- Configuracion de Google Maps API Key para Android/Web si se usara despliegue con servicios de Google.
 - Configuracion de Firebase si se usara autenticacion.
 - Variables, endpoints o credenciales del backend.
 - Servicios de IA, voz o audio segun el entorno de despliegue.
@@ -96,9 +95,8 @@ flutter clean && flutter pub get
 
 ## Nota de Produccion
 
-OpenStreetMap es ideal para desarrollo y prototipado. Para alto trafico o despliegues publicos, se recomienda usar un proveedor de tiles con terminos adecuados o desplegar infraestructura propia de mapas.
+Para despliegues publicos, se recomienda configurar restricciones seguras de API key, monitoreo de uso y cuotas de Google Maps segun el trafico esperado.
 
 ## Licencia
 
 Proyecto en desarrollo. Define una licencia antes de distribuirlo o reutilizarlo publicamente.
-
