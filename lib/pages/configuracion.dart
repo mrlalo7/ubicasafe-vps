@@ -19,6 +19,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   bool _ubicacionAuto = true;
   bool _sonidos = true;
   bool _vibracion = true;
+  bool _vozPremium = true;
   String _idioma = 'Español';
   String _unidadesDistancia = 'Kilómetros';
 
@@ -36,6 +37,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       _ubicacionAuto = prefs.getBool('ubicacion_auto') ?? true;
       _sonidos = prefs.getBool('sonidos') ?? true;
       _vibracion = prefs.getBool('vibracion') ?? true;
+      _vozPremium = prefs.getBool('voz_premium') ?? true;
       _idioma = prefs.getString('idioma') ?? 'Español';
       _unidadesDistancia =
           prefs.getString('unidades_distancia') ?? 'Kilómetros';
@@ -107,6 +109,18 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       _guardarConfiguracion('idioma', value);
       _mostrarMensaje('Idioma cambiado a $value');
     }
+  }
+
+  void _cambiarVozPremium(bool value) {
+    setState(() {
+      _vozPremium = value;
+    });
+    _guardarConfiguracion('voz_premium', value);
+    _mostrarMensaje(
+      value
+          ? 'Voz Premium activada (acento boliviano)'
+          : 'Voz Rápida activada (voz local instantánea)',
+    );
   }
 
   void _cambiarUnidadesDistancia(String? value) {
@@ -589,6 +603,13 @@ Dispositivo: [Información del dispositivo]
               _idioma,
               ['Español', 'English', 'Português'],
               _cambiarIdioma,
+            ),
+            const SizedBox(height: 12),
+            _buildSwitchSetting(
+              'Voz Premium (Gemini)',
+              'Usa voz natural con acento boliviano (puede tener una leve espera)',
+              _vozPremium,
+              _cambiarVozPremium,
             ),
           ]),
 

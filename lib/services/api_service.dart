@@ -174,7 +174,7 @@ class ApiService {
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode({'text': text}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;

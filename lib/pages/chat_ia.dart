@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:ubicasafe/core/app_theme.dart';
@@ -426,27 +427,44 @@ class _ChatIaScreenState extends State<ChatIaScreen>
         .trim();
     if (cleanText.isEmpty) return;
 
-    final spokenByBackend = await _backendTtsService.speak(
-      _voiceSummary(cleanText),
-    );
-    if (spokenByBackend) {
-      if (!mounted) return;
-      setState(() {
-        _speaking = false;
-        _assistantStatus = _autoListen
-            ? 'Esperando tu voz...'
-            : 'Toca el micrófono para hablar';
-      });
-      if (_autoListen) {
-        _scheduleListeningRestart();
+    final prefs = await SharedPreferences.getInstance();
+    final usePremiumVoice = prefs.getBool('voz_premium') ?? true;
+
+    if (usePremiumVoice) {
+      final spokenByBackend = await _backendTtsService.speak(
+        _voiceSummary(cleanText),
+      );
+      if (spokenByBackend) {
+        if (!mounted) return;
+        setState(() {
+          _speaking = false;
+          _assistantStatus = _autoListen
+              ? 'Esperando tu voz...'
+              : 'Toca el micrófono para hablar';
+        });
+        if (_autoListen) {
+          _scheduleListeningRestart();
+        }
+        return;
       }
-      return;
     }
 
     if (!_ttsReady) {
       await _configureNaturalVoice();
     }
     await _tts.speak(cleanText);
+
+    // Actualizar estado al usar el sintetizador local
+    if (!mounted) return;
+    setState(() {
+      _speaking = false;
+      _assistantStatus = _autoListen
+          ? 'Esperando tu voz...'
+          : 'Toca el micrófono para hablar';
+    });
+    if (_autoListen) {
+      _scheduleListeningRestart();
+    }
   }
 
   String _voiceSummary(String text) {
