@@ -46,6 +46,13 @@ RISK_LEVEL_LABELS = {
     "critical": "CRITICO",
 }
 
+RISK_LEVEL_AYMARA_LABELS = {
+    "low": "jisk'a jan walt'awi",
+    "medium": "taypi jan walt'awi",
+    "high": "jach'a jan walt'awi",
+    "critical": "sinti jach'a jan walt'awi",
+}
+
 SUPPORTED_LANGUAGES = {"es", "ay", "es-ay"}
 
 AYMARA_SECURITY_GLOSSARY = """
@@ -90,6 +97,12 @@ def risk_level_label(value: str | None) -> str:
     """Return a user-facing Spanish label for a stored risk level."""
     normalized = (value or "").strip().lower()
     return RISK_LEVEL_LABELS.get(normalized, normalized.upper() or "NO ESPECIFICADO")
+
+
+def risk_level_aymara_label(value: str | None) -> str:
+    """Return a user-facing Aymara label for a stored risk level."""
+    normalized = (value or "").strip().lower()
+    return RISK_LEVEL_AYMARA_LABELS.get(normalized, "jan qhananchata")
 
 
 def normalize_language(language: str | None) -> str:
@@ -239,7 +252,8 @@ def build_rag_context(
         parts.append("=== ZONAS DE RIESGO RELEVANTES ===")
         for i, z in enumerate(zones, 1):
             parts.append(
-                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} — "
+                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} "
+                f"(aymara: {risk_level_aymara_label(z.get('risk_level'))}) — "
                 f"Radio: {z['radius_meters']:.0f}m — "
                 f"Reportes registrados: {z.get('report_count', 0)} — "
                 f"{z['description']}"
@@ -294,6 +308,10 @@ async def generate_rag_response(
         "HIGH ni CRITICAL. "
         "Cuando respondas en aymara, puedes conservar esas etiquetas de riesgo "
         "en español junto a una explicacion breve en aymara. "
+        "Regla estricta para aymara: BAJO = jisk'a jan walt'awi, "
+        "MEDIO = taypi jan walt'awi, ALTO = jach'a jan walt'awi, "
+        "CRITICO = sinti jach'a jan walt'awi. Nunca uses 'jisk'a' para "
+        "MEDIO ni para ALTO. "
         "Guía al usuario para reportar, consultar riesgo o recibir "
         "consejos preventivos."
     )

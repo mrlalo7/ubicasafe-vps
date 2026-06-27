@@ -45,7 +45,7 @@ async def _build_live_context() -> str:
         "Si pide bilingüe, responde primero en español y luego una versión breve en aymara.",
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un lugar seguro.",
         "No afirmes que contactaste autoridades. Orienta al usuario para reportar o prevenir.",
-        "Glosario aymara: peligro = jan walt'awi; robo = lunthatawi; ayuda = yanapt'awi; ayuda urgente = jank'aki yanapt'awi; zona segura = suma chiqa; denuncia = yatiyawi; llama al 110 = 110 ukar jawst'am; busca lugar seguro = suma chiqaw thaqam; no enfrentes al agresor = jan nuwasimti.",
+        "Glosario aymara: peligro = jan walt'awi; riesgo BAJO = jisk'a jan walt'awi; riesgo MEDIO = taypi jan walt'awi; riesgo ALTO = jach'a jan walt'awi; riesgo CRITICO = sinti jach'a jan walt'awi; robo = lunthatawi; ayuda = yanapt'awi; ayuda urgente = jank'aki yanapt'awi; zona segura = suma chiqa; denuncia = yatiyawi; llama al 110 = 110 ukar jawst'am; busca lugar seguro = suma chiqaw thaqam; no enfrentes al agresor = jan nuwasimti. Nunca uses jisk'a para MEDIO o ALTO.",
     ]
 
     if zones:
