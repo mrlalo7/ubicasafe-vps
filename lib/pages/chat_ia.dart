@@ -4,13 +4,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:ubicasafe/core/app_theme.dart';
+import 'package:ubicasafe/data/risk_zones.dart';
 import 'package:ubicasafe/pages/configuracion.dart';
 import 'package:ubicasafe/pages/mapapredictivo.dart';
 import 'package:ubicasafe/pages/miperfil.dart';
 import 'package:ubicasafe/pages/reportarrobo.dart';
+import 'package:ubicasafe/services/api_service.dart';
 import 'package:ubicasafe/services/live_audio_service.dart';
 
 class ChatIaScreen extends StatefulWidget {
@@ -24,6 +27,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _voiceController;
   final LiveAudioService _liveAudioService = LiveAudioService();
+  final ApiService _apiService = ApiService();
   final SpeechToText _speech = SpeechToText();
   final FlutterTts _tts = FlutterTts();
   final TextEditingController _textController = TextEditingController();
@@ -443,6 +447,143 @@ class _ChatIaScreenState extends State<ChatIaScreen>
     });
   }
 
+  Future<void> _sendCurrentLocationRiskQuestion() async {
+    HapticFeedback.mediumImpact();
+    _autoListen = true;
+    _restartListenTimer?.cancel();
+    await _speech.stop();
+    await _tts.stop();
+
+    setState(() {
+      _thinking = true;
+      _speaking = true;
+      _assistantStatus = 'Ubicando tu zona...';
+      _assistantReply = _assistantLanguage == 'ay'
+          ? 'Jichha kawkhanktas uk uñakipaskta...'
+          : 'Estoy revisando tu ubicación actual...';
+    });
+
+    final position = await _getCurrentDevicePosition();
+    if (!mounted) return;
+
+    if (position == null) {
+      setState(() {
+        _thinking = false;
+        _speaking = false;
+        _assistantStatus = _assistantLanguage == 'ay'
+            ? 'Ubicación jan jikxataskiti'
+            : 'Ubicación no disponible';
+        _assistantReply = _assistantLanguage == 'ay'
+            ? 'GPS ukarux permiso churam ukat wasitat yant’am.'
+            : 'Activa el GPS y concede permiso de ubicación para revisar si tu zona es segura.';
+      });
+      _scheduleListeningRestart();
+      return;
+    }
+
+    final zones = await _loadZonesForLocation();
+    final nearest = _nearestZone(position, zones);
+    if (nearest == null) {
+      await _sendText(
+        _assistantLanguage == 'ay'
+            ? 'Jichha kawkhankta uk jikxatta, ukampis janiw zonas de riesgo datos jikxatktti. Seguridad tuqit iwxt’ita.'
+            : 'Ya obtuve mi ubicación actual, pero no pude cargar las zonas de riesgo. Dame una recomendación de seguridad general para este lugar.',
+      );
+      return;
+    }
+
+    final zone = nearest.zone;
+    final distance = nearest.distanceMeters.round();
+    final insideZone = nearest.distanceMeters <= zone.radiusMeters;
+    final riskLabel = _riskLabel(zone.level, _assistantLanguage);
+    final prompt = _assistantLanguage == 'ay'
+        ? 'Usuariox "¿Aka chiqax segura?" sasaw jiskti. GPS ukampix zona jak’ankirix ${zone.name}; '
+              'risk level: $riskLabel; niya $distance metros; '
+              '${insideZone ? 'zona manqhana' : 'zona jak’ana'}; '
+              'radio ${zone.radiusMeters.round()} metros; reportes ${zone.reportCount}; '
+              'descripcion: ${zone.description}. '
+              'Aymarata qhana, jisk’a ukat wali amuyumpi yatiyam. MEDIO/ALTO/BAJO jan sañamti; Aymarata nivel sañamawa.'
+        : 'El usuario presionó "¿Es segura esta zona?". Ya obtuve su ubicación actual. '
+              'La zona de riesgo más cercana es ${zone.name}; nivel $riskLabel; '
+              'distancia aproximada $distance metros; '
+              '${insideZone ? 'está dentro del radio de la zona' : 'está cerca, pero fuera del radio principal'}; '
+              'radio ${zone.radiusMeters.round()} metros; reportes registrados ${zone.reportCount}; '
+              'descripción: ${zone.description}. '
+              'Responde de forma breve y útil si debe tener precaución y qué hacer ahora.';
+
+    await _sendText(prompt);
+  }
+
+  Future<Position?> _getCurrentDevicePosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+
+      try {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+      } on TimeoutException {
+        return Geolocator.getLastKnownPosition();
+      }
+    } catch (_) {
+      return Geolocator.getLastKnownPosition();
+    }
+  }
+
+  Future<List<RiskZone>> _loadZonesForLocation() async {
+    final zones = await _apiService.getRiskZones();
+    if (zones.isNotEmpty) return zones;
+    return RiskMapData.zones;
+  }
+
+  _NearbyRiskZone? _nearestZone(Position position, List<RiskZone> zones) {
+    _NearbyRiskZone? nearest;
+    for (final zone in zones) {
+      final distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        zone.position.latitude,
+        zone.position.longitude,
+      );
+      if (nearest == null || distance < nearest.distanceMeters) {
+        nearest = _NearbyRiskZone(zone: zone, distanceMeters: distance);
+      }
+    }
+    return nearest;
+  }
+
+  String _riskLabel(RiskLevel level, String language) {
+    if (language == 'ay') {
+      switch (level) {
+        case RiskLevel.high:
+          return 'jach’a jan walt’awi';
+        case RiskLevel.medium:
+          return 'taypi jan walt’awi';
+        case RiskLevel.low:
+          return 'jisk’a jan walt’awi';
+      }
+    }
+    switch (level) {
+      case RiskLevel.high:
+        return 'alto';
+      case RiskLevel.medium:
+        return 'medio';
+      case RiskLevel.low:
+        return 'bajo';
+    }
+  }
+
   String get _elapsedLabel {
     final minutes = _elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = _elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -545,11 +686,7 @@ class _ChatIaScreenState extends State<ChatIaScreen>
                       const SizedBox(height: 16),
                       _QuickGrid(
                         onReport: () => _open(const ReportarRobo()),
-                        onRisk: () => _sendText(
-                          _assistantLanguage == 'ay'
-                              ? 'Aka chiqax jan waltawit segura ukhama?'
-                              : '¿Es segura esta zona?',
-                        ),
+                        onRisk: _sendCurrentLocationRiskQuestion,
                         onUrgent: () => _sendText(
                           _assistantLanguage == 'ay'
                               ? 'Jankaki yanapt’a munta'
@@ -636,6 +773,13 @@ class _ReplyPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NearbyRiskZone {
+  const _NearbyRiskZone({required this.zone, required this.distanceMeters});
+
+  final RiskZone zone;
+  final double distanceMeters;
 }
 
 class _TimerBadge extends StatelessWidget {
