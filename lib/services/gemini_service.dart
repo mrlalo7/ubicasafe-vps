@@ -33,18 +33,29 @@ class GeminiService {
     );
 
     if (ragResponse.fromRag) {
-      return ragResponse.answer;
+      return _cleanAssistantText(ragResponse.answer);
     }
 
     // Si el backend de la VPS respondió pero con un error de servidor (ej: 500, 400),
     // mostramos ese error directamente para que sea visible y diagnosticable.
     if (!ragResponse.error && ragResponse.answer.isNotEmpty) {
-      return ragResponse.answer;
+      return _cleanAssistantText(ragResponse.answer);
     }
 
     // Gemini debe vivir en el backend/RAG. En Flutter no pedimos API key para
     // evitar exponer secretos en la app y para que siempre use datos reales.
     return 'No pude conectar con el backend de UbicaSafe. Revisa la conexión a internet, CORS o que la VPS esté disponible.';
+  }
+
+  String _cleanAssistantText(String value) {
+    return value
+        .replaceAll('**', '')
+        .replaceAll(RegExp(r'\bMEDIUM\b', caseSensitive: false), 'MEDIO')
+        .replaceAll(RegExp(r'\bHIGH\b', caseSensitive: false), 'ALTO')
+        .replaceAll(RegExp(r'\bLOW\b', caseSensitive: false), 'BAJO')
+        .replaceAll(RegExp(r'\bCRITICAL\b', caseSensitive: false), 'CRITICO')
+        .replaceAll(RegExp(r'[ \t]+'), ' ')
+        .trim();
   }
 
   Future<String> sendSafetyMessage({

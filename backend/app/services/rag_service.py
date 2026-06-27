@@ -39,6 +39,19 @@ STOPWORDS = {
     "zona",
 }
 
+RISK_LEVEL_LABELS = {
+    "low": "BAJO",
+    "medium": "MEDIO",
+    "high": "ALTO",
+    "critical": "CRITICO",
+}
+
+
+def risk_level_label(value: str | None) -> str:
+    """Return a user-facing Spanish label for a stored risk level."""
+    normalized = (value or "").strip().lower()
+    return RISK_LEVEL_LABELS.get(normalized, normalized.upper() or "NO ESPECIFICADO")
+
 
 async def search_similar_reports(
     session: AsyncSession,
@@ -160,7 +173,7 @@ def build_rag_context(
         parts.append("=== ZONAS DE RIESGO RELEVANTES ===")
         for i, z in enumerate(zones, 1):
             parts.append(
-                f"{i}. {z['name']} — Nivel: {z['risk_level'].upper()} — "
+                f"{i}. {z['name']} — Nivel: {risk_level_label(z.get('risk_level'))} — "
                 f"Radio: {z['radius_meters']:.0f}m — "
                 f"Reportes registrados: {z.get('report_count', 0)} — "
                 f"{z['description']}"
@@ -206,6 +219,11 @@ async def generate_rag_response(
         "en la sección CONTEXTO. No inventes estadísticas ni reportes. "
         "Si hay peligro inmediato, recomienda llamar al 110 y buscar un "
         "lugar seguro. "
+        "No uses Markdown: no escribas asteriscos, negritas, listas con *, "
+        "tablas ni encabezados. "
+        "Cuando menciones niveles de riesgo, usa solo estas etiquetas en "
+        "español: BAJO, MEDIO, ALTO o CRITICO. Nunca respondas LOW, MEDIUM, "
+        "HIGH ni CRITICAL. "
         "Guía al usuario para reportar, consultar riesgo o recibir "
         "consejos preventivos."
     )
