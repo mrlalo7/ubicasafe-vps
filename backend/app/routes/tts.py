@@ -33,8 +33,39 @@ class TtsResponse(BaseModel):
     audio_base64: str
 
 
+def _audio_data_from_content(content: object) -> str | None:
+    """Return base64 data from audio content nested in a Gemini response."""
+    if isinstance(content, dict):
+        mime_type = content.get("mime_type") or content.get("mimeType")
+        data = content.get("data")
+        if (
+            isinstance(mime_type, str)
+            and mime_type.startswith("audio/")
+            and isinstance(data, str)
+            and data
+        ):
+            return data
+
+        for value in content.values():
+            audio_data = _audio_data_from_content(value)
+            if audio_data:
+                return audio_data
+
+    if isinstance(content, list):
+        for item in content:
+            audio_data = _audio_data_from_content(item)
+            if audio_data:
+                return audio_data
+
+    return None
+
+
 def _extract_audio_base64(payload: dict) -> str | None:
-    """Support likely response shapes from the Interactions API."""
+    """Support response shapes returned by the Gemini Interactions API."""
+    audio_data = _audio_data_from_content(payload)
+    if audio_data:
+        return audio_data
+
     output_audio = payload.get("output_audio") or payload.get("outputAudio")
     if isinstance(output_audio, dict):
         data = output_audio.get("data")
